@@ -1,3 +1,97 @@
+# RHINE LAB · MEMORY ARCHIVE（莱茵生命风格相册）
+
+本仓库 fork 自 **[LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)**（作者：**路北路陈 / LBEILC**，MIT 许可），把原来的「莱茵生命档案终端」改造成一个长期使用的私人电子相册。
+
+**原项目的开场动画、三维档案阵列、抽取与解密动效、360° 模型查看器与拆解、滚动文字、音效配乐、亮暗配色、画质设置、PWA 离线都保留不变**；相册是加在上面的一层：
+
+- 每张照片就是阵列里的一份档案，五列 = 五「卷」。
+- 选中的档案盒内部基板上印着这张照片，玻璃由磨砂变清晰时透出来；360° 查看器里它跟着基板一起拆解。
+- 打开档案后，右侧（手机在下方）文档里显示照片，和文字一起被「遮挡条」揭开；下面是日期、地点、标签、说明、备注。
+- 点照片进入全屏查看：左右滑动 / 方向键切换，双击或双指缩放，下滑关闭，可导出图片。
+- 右上角「▦ 相册」是总览（按卷排列的缩略图）。「ARCHIVE INDEX」可按编号、标题、日期、地点、标签检索。
+- 浏览器不支持 WebGL 2 时，自动改为二维模式：照片墙代替三维阵列，其余功能照常。
+- 从纪念网页跳过来时网址带 `?from=jelly`，进入后会短暂显示 `ACCESS ROUTE / JELLY`。
+
+在线地址：<https://smartlotus.github.io/rhine-album/>
+
+## 添加照片（以后只需要这几步）
+
+需要 Node.js 22.12+（推荐 24）。第一次先 `npm ci`。
+
+```sh
+# 1. 把原图复制进 photos/ 并追加到清单末尾（会自动跳过完全相同或看起来是同一张的图）
+npm run add-photos -- ~/Downloads/a.jpg ~/Downloads/b.jpg
+
+# 2. 生成网页用图片（AVIF + WebP，三种尺寸，去掉 GPS 等全部 EXIF，方向已校正）
+npm run photos
+
+# 3. 本地预览（可选）
+npm run dev
+
+# 4. 提交并发布到 GitHub Pages
+git add content public/photos && git commit -m "添加照片"
+git push
+npm run deploy:pages
+```
+
+`photos/` 里的原图**不会**提交到 GitHub（`.gitignore` 已忽略），公开的只有 `public/photos/` 里去掉元数据的网页版本。
+
+## 写文字：`content/album.json`
+
+```json
+{
+  "volumes": [
+    { "name": "第一卷", "en": "VOLUME 01" }
+  ],
+  "photos": [
+    {
+      "file": "0001.jpg",
+      "volume": 1,
+      "title": "",
+      "en": "",
+      "date": "",
+      "place": "",
+      "caption": "",
+      "notes": [],
+      "tags": []
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `volumes` | 固定 5 卷（对应三维阵列的 5 列），`name` 是中文卷名，`en` 是英文小标题 |
+| `file` | `photos/` 里的文件名 |
+| `volume` | 放在第几卷（1–5）。留空则按顺序平均分到 5 卷 |
+| `title` / `en` | 中文标题 / 大号英文标题，留空显示「影像 001」/「MEMORY NO.001」 |
+| `date` | 日期，留空时用照片 EXIF 的拍摄日期 |
+| `place`、`caption`、`notes`、`tags` | 地点、说明（可用 `\n` 换行）、备注列表、标签列表，都可以留空 |
+| `clearance` | 可选，右上角的小字，默认 `PRIVATE ARCHIVE` |
+
+规则：每卷最多 20 张（共 100 张）；某一卷没有照片时，那一列显示一个「待归档」档案盒。照片在清单里的顺序决定编号（X-001…），新照片请加在末尾，这样收藏不会错位。
+
+`npm run check:content` 会检查清单；`npm run build` 前也会自动检查。
+
+## 隐私
+
+- 仓库和 Pages 都是**公开**的（GitHub 上 fork 的公开仓库不能设为私有，免费账号的 Pages 也需要公开仓库）。知道网址的人都能看到照片；页面加了 `noindex`，不会被搜索引擎收录，但这不等于加密。
+- 网页图片已去掉 GPS、相机型号、拍摄时间等全部 EXIF。
+- 如果以后想要真正私密，可以改为私有仓库 + Cloudflare Pages / Vercel 加访问密码，或换成非 fork 的私有仓库。
+
+## 致谢与许可
+
+- 界面、三维模型（`public/assets/*.glb`、`art/` 下的 Blender 工程）、动效、原创配乐与音效：**[RhineLabUI](https://github.com/LBEILC/RhineLabUI) © 2026 LBEILC（路北路陈）**，MIT 许可，见 [LICENSE](LICENSE)。PR #15 优化的署名见 [PR15-ATTRIBUTION.md](PR15-ATTRIBUTION.md)。
+- 字体 MiSans（小米），许可见 `public/fonts/`。滚动数字 `@kitlangton/rolling-number` 许可见 `public/licenses/`。
+- 《明日方舟》、莱茵生命及相关设定归上海鹰角网络所有。原项目与本相册都是非官方的同人作品，仅供个人使用。
+- 相册部分新增/修改的文件：`content/album.json`、`content/album.generated.json`、`src/data.ts`、`src/album.ts`、`src/album.css`、`scripts/album-content.mjs`、`scripts/add-photos.mjs`、`scripts/build-photos.mjs`、`scripts/check-album*.mjs`、`scripts/deploy-pages.mjs`，以及 `src/main.ts`、`src/scene.ts`、`src/appearance.ts`、`src/document-decryption.ts`、`scripts/build-pwa.mjs`、`vite.config.ts` 中的少量改动。
+
+---
+
+以下是原项目 README（未改动），介绍原有的界面、动效与操作方式。
+
+---
+
 # RHINE LAB · ANALYSIS OS
 
 **把莱茵生命的终端，做成可以操作的三维界面。**

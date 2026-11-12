@@ -26,3 +26,7 @@ reference/local-files-connection.js
 public/fonts/novecento/
 .vercel/
 .wrangler/
+
+# Album originals keep full EXIF (GPS etc). Only stripped web versions in public/photos are published.
+photos/*
+!photos/README.md

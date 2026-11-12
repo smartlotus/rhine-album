@@ -20,7 +20,7 @@ import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
 import { configureInternalOptics } from "./internal-optics";
 import { DecryptionController } from "./decryption";
-import { fileAtSlot, fileLocation } from "./data";
+import { fileAtSlot, fileLocation, records } from "./data";
 import {
   cellKey,
   sameCell,
@@ -238,6 +238,12 @@ export class ArchiveScene {
   private clock = 0;
   private loaded = false;
   private labelCanvas = document.createElement("canvas");
+  // Album: the selected cassette carries a print of its photo on the inner
+  // substrate, behind the optical rings, so the glass reveal uncovers it.
+  private printCanvas = document.createElement("canvas");
+  private printTexture?: THREE.CanvasTexture;
+  private printImages = new Map<string, HTMLImageElement>();
+  private printIndex = -1;
   private labelTexture?: THREE.CanvasTexture;
   private labelMark = new Image();
   private motion: MotionPreferences = fullMotion();
@@ -479,6 +485,12 @@ export class ArchiveScene {
     }
     this.shadowCoverage = new ArchiveShadowCoverage(this.instances.find(mesh => mesh.castShadow)!);
     this.scene.add(this.shadowCoverage.mesh);
+    this.printCanvas.width = 1024;
+    this.printCanvas.height = 744;
+    this.printTexture = new THREE.CanvasTexture(this.printCanvas);
+    this.printTexture.colorSpace = THREE.SRGBColorSpace;
+    this.printTexture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    this.model.add(this.createPrintMesh(this.printTexture));
     this.labelCanvas.width = 1024;
     this.labelCanvas.height = 440;
     this.labelTexture = new THREE.CanvasTexture(this.labelCanvas);
@@ -555,6 +567,12 @@ export class ArchiveScene {
       }),
     );
     label.position.set(-1.36, 3.04, 0.255);
+    const printCopy = this.snapshotPrint();
+    if (printCopy) {
+      printCopy.userData.assemblyPart = "substrate";
+      model.add(printCopy);
+      meshes.push(printCopy);
+    }
     label.userData.assemblyPart = "cover";
     label.userData.themeAmount = themeMaterial(label.material, "Printed_Canvas");
     label.userData.themeAmount.value = this.themeAmount;
@@ -732,6 +750,11 @@ export class ArchiveScene {
         transparent: true,
         depthWrite: false,
       });
+      const clonedPrint = group.children.find((child) => child.userData.photoPrint) as THREE.Mesh | undefined;
+      if (clonedPrint) {
+        const snapshot = this.snapshotPrint();
+        if (snapshot) clonedPrint.material = snapshot.material;
+      }
       // Clone carries the selected label material by reference. Replace it
       // before installing appearance shaders, so theme hooks are not appended
       // to the original label a second time on every selection.
@@ -803,6 +826,83 @@ export class ArchiveScene {
     c.fillText("INFO", 830, 143);
     c.drawImage(this.labelMark, 790, 242, 210, 98);
     this.labelTexture.needsUpdate = true;
+    this.drawPrint(index);
+  }
+  private createPrintMesh(map: THREE.Texture) {
+    const print = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.4, 3.2),
+      new THREE.MeshStandardMaterial({ map, roughness: 0.62, metalness: 0 }),
+    );
+    print.position.set(0, 1.865, -0.017);
+    print.receiveShadow = true;
+    print.userData.photoPrint = true;
+    return print;
+  }
+  private snapshotPrint() {
+    if (!this.printTexture) return undefined;
+    const canvas = document.createElement("canvas");
+    canvas.width = this.printCanvas.width;
+    canvas.height = this.printCanvas.height;
+    canvas.getContext("2d")!.drawImage(this.printCanvas, 0, 0);
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = this.printTexture.anisotropy;
+    return this.createPrintMesh(map);
+  }
+  private drawPrint(index: number) {
+    if (!this.printTexture) return;
+    this.printIndex = index;
+    const record = records[index];
+    const url = record?.photo ? publicAsset(record.photo.src.mid.webp) : "";
+    let image = url ? this.printImages.get(url) : undefined;
+    if (url && !image) {
+      image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        if (this.printIndex === index) this.paintPrint(index, image);
+      };
+      image.src = url;
+      this.printImages.set(url, image);
+      // Keep a small cache; the array can be browsed quickly.
+      if (this.printImages.size > 10) this.printImages.delete(this.printImages.keys().next().value!);
+    }
+    this.paintPrint(index, image?.complete && image.naturalWidth ? image : undefined);
+  }
+  private paintPrint(index: number, image?: HTMLImageElement) {
+    const c = this.printCanvas.getContext("2d")!;
+    const W = this.printCanvas.width, H = this.printCanvas.height;
+    const record = records[index];
+    c.globalAlpha = 1;
+    c.fillStyle = "#dcd5cb";
+    c.fillRect(0, 0, W, H);
+    if (image) {
+      // Soft, enlarged echo of the photo as the backing, then the print itself.
+      const small = document.createElement("canvas");
+      small.width = 32;
+      small.height = 24;
+      const sc = small.getContext("2d")!;
+      const cover = Math.max(32 / image.naturalWidth, 24 / image.naturalHeight);
+      sc.drawImage(image, (32 - image.naturalWidth * cover) / 2, (24 - image.naturalHeight * cover) / 2, image.naturalWidth * cover, image.naturalHeight * cover);
+      c.imageSmoothingEnabled = true;
+      c.globalAlpha = 0.55;
+      c.drawImage(small, 0, 0, W, H);
+      c.globalAlpha = 1;
+      const box = { x: 70, y: 56, w: W - 140, h: H - 150 };
+      const fit = Math.min(box.w / image.naturalWidth, box.h / image.naturalHeight);
+      const w = image.naturalWidth * fit, h = image.naturalHeight * fit;
+      const x = box.x + (box.w - w) / 2, y = box.y + (box.h - h) / 2;
+      c.fillStyle = "#f2eee7";
+      c.fillRect(x - 12, y - 12, w + 24, h + 24);
+      c.drawImage(image, x, y, w, h);
+    }
+    c.fillStyle = "#2b2a25";
+    c.font = "600 26px MiSans";
+    c.fillText(record?.photo ? "MEMORY ARCHIVE" : "AWAITING ARCHIVE", 72, H - 40);
+    c.font = "26px MiSans";
+    const id = record ? record.id : "";
+    c.fillText(id, W - 72 - c.measureText(id).width, H - 40);
+    c.fillRect(72, H - 78, W - 144, 2);
+    this.printTexture!.needsUpdate = true;
   }
   private ensureInstanceCapacity(required: number) {
     if (required <= this.instanceCapacity) return;

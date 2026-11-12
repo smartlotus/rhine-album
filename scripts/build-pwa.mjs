@@ -7,7 +7,9 @@ const files=all.map(path=>path.replaceAll('\\','/')).filter(path=>
   path==='index.html'||path==='manifest.webmanifest'||path==='favicon.svg'||
   /^(assets|icons|archives|licenses)\/[^/]+\.[^/]+$/.test(path)||
   /^fonts\/.*\.(woff2|pdf|txt|json|md)$/.test(path)||
-  /^audio\/(atmosphere|motif|pulse)\.ogg$/.test(path)
+  /^audio\/(atmosphere|motif|pulse)\.ogg$/.test(path)||
+  // Album: thumbnails and dossier-size photos work offline; full size loads online.
+  /^photos\/[a-f0-9]{12}-(thumb|mid)\.(webp|avif)$/.test(path)
 ).filter(path=>!/^assets\/archive-(cassette|assembly)\.glb$/.test(path)).sort();
 if(!files.some(path=>/^assets\/index-.*\.js$/.test(path)))throw Error('Build the application before generating the offline cache.');
 const worker=await readFile('scripts/pwa-worker.js','utf8');

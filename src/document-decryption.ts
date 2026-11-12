@@ -25,6 +25,23 @@ export class DocumentDecryption {
     const targets = this.root.querySelectorAll<HTMLElement>(
       "h2, .detail-title-cn, .metadata dd, .tab-panel p, .research-notes li, .log-row",
     );
+    // Album photos: the whole frame is covered by stacked bars that slide
+    // away with the same timing as the text redaction.
+    this.root.querySelectorAll<HTMLElement>(".album-photo-frame").forEach((frame) => {
+      frame.classList.add("document-redacted");
+      const bars = 7;
+      for (let i = 0; i < bars; i++) {
+        const window = document.createElement("span");
+        window.className = "document-redaction-window";
+        window.setAttribute("aria-hidden", "true");
+        window.style.cssText = `left:0;top:${(i / bars) * 100}%;width:100%;height:calc(${100 / bars}% + 1px)`;
+        const ink = document.createElement("span");
+        ink.className = "document-redaction-ink";
+        window.append(ink);
+        frame.append(window);
+        this.covers.push({ window, ink, order: this.covers.length });
+      }
+    });
     targets.forEach((target) => {
       target.classList.add("document-redacted");
       const bounds = target.getBoundingClientRect();

@@ -1,0 +1,25 @@
+{
+  "volumes": [
+    {
+      "name": "第一卷",
+      "en": "VOLUME 01"
+    },
+    {
+      "name": "第二卷",
+      "en": "VOLUME 02"
+    },
+    {
+      "name": "第三卷",
+      "en": "VOLUME 03"
+    },
+    {
+      "name": "第四卷",
+      "en": "VOLUME 04"
+    },
+    {
+      "name": "第五卷",
+      "en": "VOLUME 05"
+    }
+  ],
+  "photos": []
+}

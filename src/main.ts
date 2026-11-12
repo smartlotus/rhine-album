@@ -35,7 +35,17 @@ import {
   archiveColumns,
   columnFiles,
   fileLocation,
+  volumes,
+  photoRecordIndexes,
 } from "./data";
+import {
+  Lightbox,
+  ContactSheet,
+  pictureMarkup,
+  photoUrl,
+  mountFallbackWall,
+  arrivalSource,
+} from "./album";
 import { TerminalAudio } from "./audio";
 import { audioSettingsMarkup } from "./audio-settings";
 import {
@@ -82,6 +92,7 @@ $("#stage").innerHTML = `
   <nav class="system-nav" aria-label="系统导航">
     <button data-action="search"><span class="nav-glyph">⌕</span> ARCHIVE INDEX <span class="key">/</span></button>
     <button data-action="saved" aria-label="查看收藏档案" title="收藏档案">＋ SAVED <span id="saved-count">00</span></button>
+    <button class="album-button" data-action="album" aria-label="相册总览" title="相册总览"><span class="album-glyph" aria-hidden="true">▦</span><span class="settings-label">相册</span></button>
     <button class="settings-button" data-action="settings" aria-label="系统设置" title="系统设置"><span class="settings-glyph" aria-hidden="true">◷</span><span class="settings-label">设置</span></button>
   </nav>
   <button id="skip" class="skip" data-action="skip">ENTER SYSTEM <span>↗</span></button>
@@ -235,8 +246,10 @@ const fileCounter = createRollingNumber($("#selected-number"), {
 });
 const columnCounter = createRollingNumber($("#column-index"), {
   ...numberOptions,
-  value: 3,
+  value: 1,
 });
+const volumeNumber = (lane: number) =>
+  volumes.findIndex((v) => v.name === archiveColumns[lane]) + 1;
 const codeOptions = {
   ...numberOptions,
   format: { minimumIntegerDigits: 3, useGrouping: false },
@@ -278,6 +291,21 @@ const rollingTitles = [
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
+const albumHooks = {
+  sound: (name: "page-open" | "page-close" | "tick" | "ui-tick" | "confirm") => audio.play(name),
+  locate: (index: number) => {
+    if (!ready) return;
+    sheet.close();
+    if (mode === "boot") setMode("archive");
+    if (selected !== index || mode !== "detail") select(index);
+    openFile();
+  },
+};
+const lightbox = new Lightbox(albumHooks);
+const sheet = new ContactSheet({
+  ...albumHooks,
+  view: (index: number) => lightbox.open(index),
+});
 let musicSuppressed = false;
 function configureAudio() {
   audio.configure({ ...prefs, music: prefs.music && !musicSuppressed });
@@ -481,8 +509,23 @@ const fileTicks = [
   ...$("#file-ticks").querySelectorAll<HTMLButtonElement>("button"),
 ];
 
+const arrival = arrivalSource();
+let arrivalShown = false;
+function showArrival() {
+  if (!arrival || arrivalShown) return;
+  arrivalShown = true;
+  $("#viewport").insertAdjacentHTML(
+    "beforeend",
+    `<div class="arrival-badge" role="status"><i></i>ACCESS ROUTE / ${escapeHtml(arrival.toUpperCase())}</div>`,
+  );
+  const badge = $(".arrival-badge");
+  requestAnimationFrame(() => badge.classList.add("visible"));
+  setTimeout(() => badge.classList.remove("visible"), 5200);
+  setTimeout(() => badge.remove(), 6000);
+}
 function setMode(next: Mode) {
   if (workbench?.enabled && next === "detail") next = "archive";
+  if (next !== "boot") showArrival();
   const previousMode = mode;
   rollingTitles.forEach((title) =>
     title.update({
@@ -612,7 +655,7 @@ function updateSelection(navigation?: ArchiveNavigation) {
   });
   $(".count-total").textContent = String(files.length).padStart(2, "0");
   columnCounter.update({
-    value: lane + 1,
+    value: volumeNumber(lane),
     animated: motionActive("rollingNumbers") && mode === "archive",
     direction:
       navigation && "axis" in navigation && navigation.axis === "lane"
@@ -686,15 +729,20 @@ function renderDetail() {
   tabTransition.cancel();
   const r = records[selected];
   $("#object-id").textContent = "NO." + String(selected + 1).padStart(3, "0");
+  const photoIndex = photoRecordIndexes.indexOf(selected);
+  const figure = r.photo
+    ? `<figure class="album-photo"><button class="album-photo-frame" data-action="photo-open" aria-label="全屏查看 ${escapeHtml(r.title)}">${pictureMarkup(r, "mid", { eager: true })}<span class="ph-hud"><i></i>${r.id}</span><span class="ph-open">VIEW ↗</span></button><figcaption class="album-photo-caption"><span>${r.photo.width} × ${r.photo.height}</span><span>${String(photoIndex + 1).padStart(3, "0")} / ${String(photoRecordIndexes.length).padStart(3, "0")}</span></figcaption></figure>`
+    : `<div class="album-awaiting"><div><strong>AWAITING ARCHIVE</strong><p>此卷暂无照片</p></div></div>`;
   $("#detail-content").innerHTML = `
   <div class="detail-kicker"><span>FILE ${r.id}</span><span>${escapeHtml(r.clearance)}</span></div>
   <h2>${escapeHtml(r.en)}</h2><div class="detail-title-cn">${escapeHtml(r.title)}<span>${escapeHtml(r.category)}</span></div>
   <div class="detail-rule"></div>
-  <dl class="metadata"><div><dt>DEPARTMENT / 科室</dt><dd>${escapeHtml(r.department)}</dd></div><div><dt>COLLECTION / 编目范围</dt><dd>${escapeHtml(r.date)}</dd></div><div><dt>RELATED / 相关人物</dt><dd>${escapeHtml(r.lead)}</dd></div><div><dt>STATUS / 状态</dt><dd><i></i>${r.clearance === "RESTRICTED" ? "目录访问" : "已归档 · 可读取"}</dd></div></dl>
-  <div class="detail-tabs" role="tablist"><button id="tab-overview" class="active" role="tab" aria-controls="tab-panel" aria-selected="true" data-tab="overview">01 <span>概述</span></button><button id="tab-notes" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="notes">02 <span>研究记录</span></button><button id="tab-history" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="history">03 <span>访问日志</span></button><i class="tab-indicator" aria-hidden="true"></i></div>
+  ${figure}
+  <dl class="metadata"><div><dt>DATE / 日期</dt><dd>${escapeHtml(r.department)}</dd></div><div><dt>PLACE / 地点</dt><dd>${escapeHtml(r.date)}</dd></div><div><dt>TAGS / 标签</dt><dd>${escapeHtml(r.lead)}</dd></div><div><dt>STATUS / 状态</dt><dd><i></i>${r.photo ? "已归档 · 可读取" : "待归档"}</dd></div></dl>
+  <div class="detail-tabs" role="tablist"><button id="tab-overview" class="active" role="tab" aria-controls="tab-panel" aria-selected="true" data-tab="overview">01 <span>说明</span></button><button id="tab-notes" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="notes">02 <span>备注</span></button><button id="tab-history" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="history">03 <span>访问日志</span></button><i class="tab-indicator" aria-hidden="true"></i></div>
   <div id="tab-panel" class="tab-panel" role="tabpanel">${overview()}</div>
-  <div class="detail-actions"><button class="solid-button" data-action="bookmark">${saved.has(r.id) ? "− REMOVE FROM SAVED" : "＋ SAVE ARCHIVE"}<span>${saved.has(r.id) ? "已收藏" : "收藏档案"}</span></button><a class="export-button" href="${assetUrl(`archives/RHINE-LAB-${r.id}.txt`)}" download="RHINE-LAB-${r.id}.txt" aria-label="导出 ${r.id} 档案">EXPORT <span>↓</span></a></div>
-  <div class="detail-footnote"><a href="${escapeHtml(r.source)}" target="_blank" rel="noopener">设定参考 ↗</a><span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
+  <div class="detail-actions"><button class="solid-button" data-action="bookmark">${saved.has(r.id) ? "− REMOVE FROM SAVED" : "＋ SAVE ARCHIVE"}<span>${saved.has(r.id) ? "已收藏" : "收藏档案"}</span></button>${r.photo ? `<a class="export-button" href="${photoUrl(r, "full")}" download="RHINE-LAB-${r.id}.webp" aria-label="导出 ${r.id} 照片">EXPORT <span>↓</span></a>` : ""}</div>
+  <div class="detail-footnote">${r.photo ? '<button class="footnote-link" data-action="photo-open">全屏查看 ↗</button>' : "<span></span>"}<span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
   $("#detail-content").setAttribute("tabindex", "-1");
   $('[data-action="bookmark"]').setAttribute(
     "aria-pressed",
@@ -709,7 +757,8 @@ function renderDetail() {
   setTab(activeTab, false);
 }
 function overview() {
-  return `<div class="panel-label">ABSTRACT / 摘要</div><p>${escapeHtml(records[selected].abstract)}</p>`;
+  const text = records[selected].abstract;
+  return `<div class="panel-label">CAPTION / 说明</div>${text ? text.split(/\n+/).map((line) => `<p>${escapeHtml(line)}</p>`).join("") : '<p class="album-muted">—</p>'}`;
 }
 function setTab(tab: string, sound = true) {
   if (sound && tab === activeTab) return;
@@ -731,7 +780,7 @@ function setTab(tab: string, sound = true) {
     tab === "overview"
       ? overview()
       : tab === "notes"
-        ? `<div class="panel-label">RESEARCH NOTES / 研究记录</div><ol class="research-notes">${r.findings.map((f, i) => `<li><span>${String(i + 1).padStart(2, "0")}</span>${escapeHtml(f)}</li>`).join("")}</ol>`
+        ? `<div class="panel-label">NOTES / 备注</div>${r.findings.length ? `<ol class="research-notes">${r.findings.map((f, i) => `<li><span>${String(i + 1).padStart(2, "0")}</span>${escapeHtml(f)}</li>`).join("")}</ol>` : '<p class="album-muted">—</p>'}`
         : `<div class="panel-label">ACCESS LOG / 本次访问</div>${accessLog
             .filter((entry) => entry.id === r.id)
             .slice(0, 4)
@@ -800,7 +849,7 @@ function renderModal() {
   if (!modal) return;
   modalTransition?.dispose();
   $("#modal-root").innerHTML =
-    `<div class="modal-backdrop"><section class="terminal-modal ${modal === "settings" ? "settings-modal" : ""}" role="dialog" aria-modal="true" aria-label="${modal === "settings" ? "系统设置" : modal === "saved" ? "收藏档案" : "档案检索"}"><div class="modal-top"><span>RHINE LAB / ${modal === "settings" ? "SYSTEM PREFERENCES" : "ARCHIVE DIRECTORY"}</span><button data-action="close-modal" aria-label="关闭窗口">CLOSE <span>×</span></button></div>${modal === "settings" ? settingsMarkup() : `<h2>${modal === "saved" ? "SAVED ARCHIVES" : "ARCHIVE INDEX"}<small>${modal === "saved" ? "收藏档案" : "内部档案检索"}</small></h2><div class="search-field"><span>⌕</span><input id="archive-search" type="search" autocomplete="off" placeholder="输入档案编号、名称或科室" aria-label="检索档案"/><span class="key">ESC</span></div><div class="category-filters">${categories.map((c, i) => `<button data-filter="${escapeHtml(c)}" class="${i === 0 ? "active" : ""}">${escapeHtml(c)}</button>`).join("")}</div><div class="result-header"><span>FILE / 档案</span><span>DEPARTMENT / 科室</span><span>ACCESS</span></div><div id="search-results" class="search-results"></div><div class="modal-bottom"><span id="result-count"></span><span>INTERNAL DATABASE <i>●</i> CONNECTED</span></div>`}</section></div>`;
+    `<div class="modal-backdrop"><section class="terminal-modal ${modal === "settings" ? "settings-modal" : ""}" role="dialog" aria-modal="true" aria-label="${modal === "settings" ? "系统设置" : modal === "saved" ? "收藏档案" : "档案检索"}"><div class="modal-top"><span>RHINE LAB / ${modal === "settings" ? "SYSTEM PREFERENCES" : "ARCHIVE DIRECTORY"}</span><button data-action="close-modal" aria-label="关闭窗口">CLOSE <span>×</span></button></div>${modal === "settings" ? settingsMarkup() : `<h2>${modal === "saved" ? "SAVED ARCHIVES" : "ARCHIVE INDEX"}<small>${modal === "saved" ? "收藏档案" : "内部档案检索"}</small></h2><div class="search-field"><span>⌕</span><input id="archive-search" type="search" autocomplete="off" placeholder="输入编号、标题、日期、地点或标签" aria-label="检索档案"/><span class="key">ESC</span></div><div class="category-filters">${categories.map((c, i) => `<button data-filter="${escapeHtml(c)}" class="${i === 0 ? "active" : ""}">${escapeHtml(c)}</button>`).join("")}</div><div class="result-header"><span>FILE / 档案</span><span>DATE / 日期</span><span>ACCESS</span></div><div id="search-results" class="search-results"></div><div class="modal-bottom"><span id="result-count"></span><span>INTERNAL DATABASE <i>●</i> CONNECTED</span></div>`}</section></div>`;
   const backdrop = $(".modal-backdrop");
   backdrop.hidden = true;
   modalTransition = new SurfaceTransition(backdrop, $(".terminal-modal"));
@@ -829,7 +878,7 @@ function renderResults() {
       ({ r }) =>
         (modal !== "saved" || saved.has(r.id)) &&
         (filter === "全部档案" || r.category === filter) &&
-        `${r.id} ${r.title} ${r.en} ${r.department} ${r.lead}`
+        `${r.id} ${r.title} ${r.en} ${r.department} ${r.date} ${r.lead} ${r.abstract}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase()),
     );
@@ -837,10 +886,10 @@ function renderResults() {
     ? results
         .map(
           ({ r, i }) =>
-            `<button class="result-row" data-result="${i}"><span class="result-name"><b>${r.id}</b><span>${escapeHtml(r.title)}<small>${escapeHtml(r.en)}</small></span>${saved.has(r.id) ? "<i>＋</i>" : ""}</span><span>${escapeHtml(r.department)}</span><span>${r.clearance === "RESTRICTED" ? "CATALOG ONLY" : "AUTHORIZED"} <i>↗</i></span></button>`,
+            `<button class="result-row" data-result="${i}"><span class="result-name">${r.photo ? `<span class="result-thumb">${pictureMarkup(r, "thumb", { alt: "" })}</span>` : ""}<b>${r.id}</b><span>${escapeHtml(r.title)}<small>${escapeHtml(r.en)}</small></span>${saved.has(r.id) ? "<i>＋</i>" : ""}</span><span>${escapeHtml(r.department)}</span><span>${r.photo ? "AUTHORIZED" : "EMPTY SLOT"} <i>↗</i></span></button>`,
         )
         .join("")
-    : `<div class="empty-results"><span>∅</span><strong>${modal === "saved" && !searchQuery ? "尚无收藏档案" : "没有匹配的档案"}</strong><p>${modal === "saved" && !searchQuery ? "读取档案时，选择 SAVE ARCHIVE 将其保存在此处。" : "尝试其他名称、档案编号，或切换科室分类。"}</p><button data-action="reset-search">${modal === "saved" ? "查看全部档案 →" : "重置检索 →"}</button></div>`;
+    : `<div class="empty-results"><span>∅</span><strong>${modal === "saved" && !searchQuery ? "尚无收藏档案" : "没有匹配的档案"}</strong><p>${modal === "saved" && !searchQuery ? "读取档案时，选择 SAVE ARCHIVE 将其保存在此处。" : "尝试其他标题、编号、日期，或切换分卷。"}</p><button data-action="reset-search">${modal === "saved" ? "查看全部档案 →" : "重置检索 →"}</button></div>`;
   $("#result-count").textContent =
     `${String(results.length).padStart(2, "0")} RECORDS FOUND`;
 }
@@ -863,7 +912,7 @@ function motionPreferenceNoteMarkup() {
   return `<div id="motion-preference-note" class="motion-preference-note"><p>${motionSummary(prefs.motion)}</p><span>预设：${preset === "full" ? "完整动画" : preset === "reduced" ? "减少动画" : "自定义"} · 选择会保存在本站</span>${allEnabled ? "" : '<button data-action="enable-motion">启用完整动画并重播 ↻</button>'}</div>`;
 }
 function settingsMarkup() {
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p>${isWallpaper ? '<p class="wallpaper-settings-note">每次启动都会读取 Wallpaper Engine 中的设置。在此修改仅对当前运行生效，无法持久保存；如需保留，请在 Wallpaper Engine 的壁纸属性中调整。</p>' : ""}<div class="settings-list">${themeSettingsMarkup(prefs.colorTheme === "dark")}${!isWallpaper ? `<label><div><strong>SUPER PERFORMANCE</strong><span>降低三维画质和渲染分辨率，保留完整动效；关闭后恢复原画质</span></div><input type="checkbox" data-pref="superPerformance" ${prefs.superPerformance ? "checked" : ""}/><i class="toggle"></i></label>` : ""}${workbench?.settingsMarkup() ?? ""}${audioSettingsMarkup(prefs)}</div>${motionPreferenceNoteMarkup()}${motionSettingsMarkup(prefs.motion, prefs.motionPreset)}${qualityMarkup(prefs.rendering)}${pwaSettingsMarkup()}<div class="settings-shortcuts">${isWallpaper ? "<span>DESKTOP CONTROLS</span><p>拖动阵列或点击界面按钮浏览档案。桌面模式下，方向键与滚轮可能无法传入壁纸。</p>" : "<span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p>"}</div><div class="settings-bottom">${!isWallpaper && document.fullscreenEnabled ? '<button data-action="fullscreen">FULLSCREEN <span>↗</span></button>' : ""}<button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${assetUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p>${isWallpaper ? '<p class="wallpaper-settings-note">每次启动都会读取 Wallpaper Engine 中的设置。在此修改仅对当前运行生效，无法持久保存；如需保留，请在 Wallpaper Engine 的壁纸属性中调整。</p>' : ""}<div class="settings-list">${themeSettingsMarkup(prefs.colorTheme === "dark")}${!isWallpaper ? `<label><div><strong>SUPER PERFORMANCE</strong><span>降低三维画质和渲染分辨率，保留完整动效；关闭后恢复原画质</span></div><input type="checkbox" data-pref="superPerformance" ${prefs.superPerformance ? "checked" : ""}/><i class="toggle"></i></label>` : ""}${workbench?.settingsMarkup() ?? ""}${audioSettingsMarkup(prefs)}</div>${motionPreferenceNoteMarkup()}${motionSettingsMarkup(prefs.motion, prefs.motionPreset)}${qualityMarkup(prefs.rendering)}${pwaSettingsMarkup()}<div class="settings-shortcuts">${isWallpaper ? "<span>DESKTOP CONTROLS</span><p>拖动阵列或点击界面按钮浏览档案。桌面模式下，方向键与滚轮可能无法传入壁纸。</p>" : "<span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p>"}</div><div class="settings-bottom">${!isWallpaper && document.fullscreenEnabled ? '<button data-action="fullscreen">FULLSCREEN <span>↗</span></button>' : ""}<button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${assetUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span></div><div class="modal-bottom credit-line"><span>界面、三维模型、动效与配乐来自 <a href="https://github.com/LBEILC/RhineLabUI" target="_blank" rel="noopener">RhineLabUI ↗</a> © 路北路陈 LBEILC（MIT 许可）· 《明日方舟》及莱茵生命相关设定归鹰角网络所有，本站为非官方同人改作</span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
 document.addEventListener("input", (e) => {
@@ -1062,6 +1111,8 @@ document.addEventListener("click", (e) => {
     openModal(action);
   }
   if (action === "close-modal") closeModal();
+  if (action === "photo-open" && mode === "detail") lightbox.open(selected);
+  if (action === "album") closeModal(() => sheet.open());
   if (action === "bookmark") toggleSaved();
   if (action === "reset-search") {
     modal = "search";
@@ -1088,7 +1139,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (!started) return;
-  if (viewer?.isOpen) return;
+  if (viewer?.isOpen || lightbox.isOpen || sheet.isOpen) return;
   if (playground?.active && !modal) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -1475,6 +1526,19 @@ async function toggleThree() {
   }
 }
 
+// No WebGL 2 (or the models failed to load): keep the whole terminal and the
+// album usable in 2D, with a photo wall in place of the 3D array.
+function fallbackTo2D(error: unknown) {
+  console.error(error);
+  try {
+    scene?.dispose();
+  } catch {}
+  scene = undefined;
+  threeState = "off";
+  $("#stage").dataset.threeState = "off";
+  $("#three-scene").replaceChildren();
+  mountFallbackWall($("#three-scene"));
+}
 async function start() {
   try {
     if (isWallpaper) await window.rhineWallpaperPropertiesReady;
@@ -1482,17 +1546,21 @@ async function start() {
       !isWallpaper ||
       wallpaperHost()?.properties.load3donstartup?.value !== false
     ) {
-      scene = new ArchiveScene($("#three-scene"));
-      scene.setTheme(prefs.colorTheme === "dark", true);
-      scene.setArchiveCoverage(
-        wallpaperHost()?.properties.archivecoverage?.value === "extra",
-      );
+      try {
+        scene = new ArchiveScene($("#three-scene"));
+        scene.setTheme(prefs.colorTheme === "dark", true);
+        scene.setArchiveCoverage(
+          wallpaperHost()?.properties.archivecoverage?.value === "extra",
+        );
+      } catch (error) {
+        fallbackTo2D(error);
+      }
     } else {
       threeState = "off";
       syncThreeButton();
     }
     await Promise.all([
-      scene?.load(),
+      scene?.load().catch(fallbackTo2D),
       loadBootWebfonts(),
       // With unicode-range faces, preload the opening's actual characters,
       // not every font shard. Other archive text loads on demand.

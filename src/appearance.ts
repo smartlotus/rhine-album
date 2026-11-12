@@ -24,6 +24,8 @@ export class CardAppearance {
       const mesh = child as THREE.Mesh;
       const name = mesh.userData.surface as string;
       const palette = this.palettes.get(name);
+      // Album photo prints keep their true colours in both themes.
+      if (mesh.userData.photoPrint) continue;
       if (!palette) {
         mesh.userData.themeAmount = themeMaterial(mesh.material as THREE.Material, "Printed_Canvas");
         continue;
