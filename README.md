@@ -73,6 +73,19 @@ npm run deploy:pages
 
 `npm run check:content` 会检查清单；`npm run build` 前也会自动检查。
 
+## 照片比例与横竖屏
+
+- **每张照片按自己的比例显示**（9:16、3:4、4:3……），比例来自 `content/album.generated.json` 里生成时记下的 `width` / `height`，不读图片本身，所以图片还没下载完时位置也不会跳。
+  - 三维档案盒里的「印片」：照片完整放进纸面，不拉伸、不裁切；竖幅照片左侧留一栏规格（FILE / RATIO / FORMAT / SIZE），横幅照片的比例标在右下角；外面一圈白边、黑色细框和裁切角标。
+  - 文档里的照片：外框随比例变高或变宽，右下角标出比例（如 `9:16`），图注写尺寸和 PORTRAIT / LANDSCAPE。
+  - 相册总览：等高行排版，每张缩略图的宽度按自己的比例，不再裁成正方形。
+  - 全屏查看：完整显示（contain），手机竖着、横着都铺满可用区域的一边。
+- **手机横屏**（如 844×390、667×375）：沿用原项目的紧凑横屏布局；全屏查看在横屏时把标题、翻页和按钮放到右侧一栏，照片占左侧整个高度；总览和文档里的照片自动变矮。所有按钮都避开刘海和底部横条（`env(safe-area-inset-*)`）。
+- **转动手机**时有一层莱茵风格的「扫描」过渡：带网格的纸面从上往下盖住画面，三维画面在下面按新尺寸重新适配，然后橙色扫描线把纸面从上往下擦掉。系统开启「减弱动态效果」时只做 0.2 秒淡入淡出。页面不锁定方向。
+- 自检：`npm run check:ratio`（比例换算的单元测试）；`npm run check:landscape`（浏览器检查，需要先 `npm run build:pages` 并在本地以 `/rhine-album/` 路径提供 `dist/`，详见 `scripts/check-landscape.mjs` 开头）。
+
+更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 隐私
 
 - 仓库和 Pages 都是**公开**的（GitHub 上 fork 的公开仓库不能设为私有，免费账号的 Pages 也需要公开仓库）。知道网址的人都能看到照片；页面加了 `noindex`，不会被搜索引擎收录，但这不等于加密。
@@ -84,7 +97,7 @@ npm run deploy:pages
 - 界面、三维模型（`public/assets/*.glb`、`art/` 下的 Blender 工程）、动效、原创配乐与音效：**[RhineLabUI](https://github.com/LBEILC/RhineLabUI) © 2026 LBEILC（路北路陈）**，MIT 许可，见 [LICENSE](LICENSE)。PR #15 优化的署名见 [PR15-ATTRIBUTION.md](PR15-ATTRIBUTION.md)。
 - 字体 MiSans（小米），许可见 `public/fonts/`。滚动数字 `@kitlangton/rolling-number` 许可见 `public/licenses/`。
 - 《明日方舟》、莱茵生命及相关设定归上海鹰角网络所有。原项目与本相册都是非官方的同人作品，仅供个人使用。
-- 相册部分新增/修改的文件：`content/album.json`、`content/album.generated.json`、`src/data.ts`、`src/album.ts`、`src/album.css`、`scripts/album-content.mjs`、`scripts/add-photos.mjs`、`scripts/build-photos.mjs`、`scripts/check-album*.mjs`、`scripts/deploy-pages.mjs`，以及 `src/main.ts`、`src/scene.ts`、`src/appearance.ts`、`src/document-decryption.ts`、`scripts/build-pwa.mjs`、`vite.config.ts` 中的少量改动。
+- 相册部分新增/修改的文件：`content/album.json`、`content/album.generated.json`、`src/data.ts`、`src/album.ts`、`src/album.css`、`scripts/album-content.mjs`、`scripts/add-photos.mjs`、`scripts/build-photos.mjs`、`scripts/check-album*.mjs`、`scripts/check-ratio-test.mjs`、`scripts/check-landscape.mjs`、`scripts/deploy-pages.mjs`、`src/photo-ratio.ts`、`src/orientation-transition.ts`，以及 `src/main.ts`、`src/scene.ts`、`src/appearance.ts`、`src/document-decryption.ts`、`scripts/build-pwa.mjs`、`vite.config.ts` 中的少量改动。
 
 ---
 

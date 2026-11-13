@@ -22,6 +22,11 @@ export function pictureMarkup(r: ArchiveRecord, size: Size, opts: { alt?: string
   return `<picture class="${opts.cls ?? ""}" style="--ph-color:${escapeHtml(r.photo.color)};--ph-lqip:url('${r.photo.lqip}');aspect-ratio:${width}/${height}">${avif ? `<source type="image/avif" srcset="${avif}"/>` : ""}<img src="${photoUrl(r, size)}" width="${width}" height="${height}" alt="${escapeHtml(opts.alt ?? r.title)}" ${opts.eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" draggable="false" onload="this.parentElement.classList.add('loaded')"/></picture>`;
 }
 
+import { ratioInfo } from "./photo-ratio";
+export { ratioInfo };
+/** Inline style that carries a photo's own ratio to CSS (--ar / --ar-inv). */
+export const ratioStyle = (r: ArchiveRecord) => r.photo ? `--ar:${(r.photo.width / r.photo.height).toFixed(5)};--ar-inv:${(r.photo.height / r.photo.width).toFixed(5)}` : "";
+
 const pad = (n: number, d = 3) => String(n).padStart(d, "0");
 const reduced = () => document.querySelector("#stage")?.classList.contains("reduce-motion") ?? false;
 
@@ -123,6 +128,7 @@ export class Lightbox {
     const holder = document.createElement("div");
     holder.className = "lb-photo";
     holder.style.setProperty("--dir", String(direction));
+    if (r.photo) { holder.style.setProperty("--ar", String(r.photo.width / r.photo.height)); holder.dataset.kind = ratioInfo(r.photo.width, r.photo.height).kind.toLowerCase(); }
     holder.innerHTML = pictureMarkup(r, "full", { eager: true });
     frame.querySelectorAll(".lb-photo").forEach((old) => {
       old.classList.add("lb-out");
@@ -138,7 +144,8 @@ export class Lightbox {
     this.root.querySelector(".lb-id")!.textContent = r.id;
     this.root.querySelector(".lb-title")!.textContent = r.title;
     const sub = [r.department, r.date].filter((v) => v && v !== "—");
-    this.root.querySelector(".lb-sub")!.textContent = [r.category, ...sub].join("  ·  ");
+    const ri = r.photo ? ratioInfo(r.photo.width, r.photo.height) : null;
+    this.root.querySelector(".lb-sub")!.textContent = [r.category, ...sub, ...(ri ? [`${ri.label} ${ri.zh}`] : [])].join("  ·  ");
     this.root.querySelector(".lb-count")!.textContent = `${pad(this.at + 1)} / ${pad(this.list.length)}`;
     const dl = this.root.querySelector<HTMLAnchorElement>(".lb-download")!;
     dl.href = photoUrl(r, "full");
@@ -226,7 +233,7 @@ export class ContactSheet {
     this.root.setAttribute("aria-label", "相册总览");
     const groups = volumes.map((v) => {
       const items = records.map((r, i) => ({ r, i })).filter(({ r }) => r.photo && r.category === v.name);
-      return `<section class="sheet-volume"><header><span>${escapeHtml(v.en)}</span><strong>${escapeHtml(v.name)}</strong><i>${pad(items.length, 2)} FILES</i></header>${items.length ? `<div class="sheet-grid">${items.map(({ r, i }) => `<button class="sheet-item" data-sheet="${i}" aria-label="${escapeHtml(`${r.id} ${r.title}`)}">${pictureMarkup(r, "thumb")}<span><b>${r.id}</b>${r.department !== "—" ? `<small>${escapeHtml(r.department)}</small>` : ""}</span></button>`).join("")}</div>` : `<p class="sheet-empty">AWAITING ARCHIVE / 待归档</p>`}</section>`;
+      return `<section class="sheet-volume"><header><span>${escapeHtml(v.en)}</span><strong>${escapeHtml(v.name)}</strong><i>${pad(items.length, 2)} FILES</i></header>${items.length ? `<div class="sheet-grid">${items.map(({ r, i }) => `<button class="sheet-item" data-sheet="${i}" data-kind="${ratioInfo(r.photo!.width, r.photo!.height).kind.toLowerCase()}" style="${ratioStyle(r)}" aria-label="${escapeHtml(`${r.id} ${r.title}`)}">${pictureMarkup(r, "thumb")}<span><b>${r.id}</b>${r.department !== "—" ? `<small>${escapeHtml(r.department)}</small>` : ""}</span></button>`).join("")}<i class="sheet-fill" aria-hidden="true"></i></div>` : `<p class="sheet-empty">AWAITING ARCHIVE / 待归档</p>`}</section>`;
     }).join("");
     this.root.innerHTML = `<div class="sheet-panel"><div class="lb-top"><span class="lb-path">RHINE LAB / MEMORY ARCHIVE / CONTACT SHEET</span><button class="lb-close" data-sheet-close aria-label="关闭">CLOSE <span>×</span></button></div><h2>CONTACT SHEET<small>相册总览 · ${pad(photoRecordIndexes.length)} FILES</small></h2><div class="sheet-body">${groups}</div><div class="sheet-bottom"><span>MEMORY ARCHIVE <i>●</i> CONNECTED</span><span>TAP TO VIEW</span></div></div>`;
     document.body.append(this.root);

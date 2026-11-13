@@ -35,6 +35,7 @@ import {
   type ArchiveNavigation,
 } from "./archive-loop";
 import { labelMarkSvg } from "./brand";
+import { ratioLabel } from "./photo-ratio";
 import { archiveFraming } from "./viewport-layout";
 import { ArchiveDrag, ArchivePlaneMomentum, type DragAxis, type DragProjection, type DragPosition } from "./archive-drag";
 import { assetUrl as publicAsset } from "./asset-url";
@@ -876,31 +877,70 @@ export class ArchiveScene {
     const W = this.printCanvas.width, H = this.printCanvas.height;
     const record = records[index];
     c.globalAlpha = 1;
-    c.fillStyle = "#dcd5cb";
+    c.shadowColor = "transparent";
+    c.fillStyle = "#e2ddd3";
     c.fillRect(0, 0, W, H);
-    if (image) {
-      // Soft, enlarged echo of the photo as the backing, then the print itself.
-      const small = document.createElement("canvas");
-      small.width = 32;
-      small.height = 24;
-      const sc = small.getContext("2d")!;
-      const cover = Math.max(32 / image.naturalWidth, 24 / image.naturalHeight);
-      sc.drawImage(image, (32 - image.naturalWidth * cover) / 2, (24 - image.naturalHeight * cover) / 2, image.naturalWidth * cover, image.naturalHeight * cover);
-      c.imageSmoothingEnabled = true;
-      c.globalAlpha = 0.55;
-      c.drawImage(small, 0, 0, W, H);
-      c.globalAlpha = 1;
-      const box = { x: 70, y: 56, w: W - 140, h: H - 150 };
-      const fit = Math.min(box.w / image.naturalWidth, box.h / image.naturalHeight);
-      const w = image.naturalWidth * fit, h = image.naturalHeight * fit;
-      const x = box.x + (box.w - w) / 2, y = box.y + (box.h - h) / 2;
-      c.fillStyle = "#f2eee7";
-      c.fillRect(x - 12, y - 12, w + 24, h + 24);
-      c.drawImage(image, x, y, w, h);
+    // Fine drafting grid, like the terminal's paper.
+    c.fillStyle = "rgba(23,23,19,0.055)";
+    for (let x = 32; x < W; x += 32) c.fillRect(x, 0, 1, H);
+    for (let y = 32; y < H; y += 32) c.fillRect(0, y, W, 1);
+    const photo = record?.photo;
+    if (photo) {
+      // The print keeps the photo's own ratio (manifest width / height): it is
+      // fitted, never stretched or cropped. Portrait prints leave a spec column.
+      const ratio = photo.width / photo.height;
+      const portrait = ratio < 1.04;
+      const box = portrait ? { x: 300, y: 54, w: W - 300 - 64, h: H - 160 } : { x: 64, y: 54, w: W - 128, h: H - 160 };
+      const fit = Math.min(box.w / ratio, box.h);
+      const h = fit, w = fit * ratio;
+      const x = Math.round(box.x + (box.w - w) / 2), y = Math.round(box.y + (box.h - h) / 2);
+      const mat = 14;
+      c.save();
+      c.shadowColor = "rgba(20,18,14,0.28)";
+      c.shadowBlur = 22;
+      c.shadowOffsetY = 8;
+      c.fillStyle = "#f4f1ea";
+      c.fillRect(x - mat, y - mat, w + mat * 2, h + mat * 2);
+      c.restore();
+      c.fillStyle = photo.color || "#cfc8bc";
+      c.fillRect(x, y, w, h);
+      if (image) { c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high"; c.drawImage(image, x, y, w, h); }
+      c.strokeStyle = "#171713";
+      c.lineWidth = 2;
+      c.strokeRect(x - 1, y - 1, w + 2, h + 2);
+      // Crop marks outside the mat.
+      const o = mat + 10, L = 22;
+      c.beginPath();
+      for (const [cx, cy, sx, sy] of [[x - o, y - o, 1, 1], [x + w + o, y - o, -1, 1], [x - o, y + h + o, 1, -1], [x + w + o, y + h + o, -1, -1]]) {
+        c.moveTo(cx, cy + sy * L); c.lineTo(cx, cy); c.lineTo(cx + sx * L, cy);
+      }
+      c.stroke();
+      c.fillStyle = "#ed821b";
+      c.fillRect(x - mat, y + h + mat + 6, 12, 12);
+      const info = ratioLabel(photo.width, photo.height);
+      if (portrait) {
+        const rows: [string, string][] = [["FILE", record.id], ["RATIO", info.label], ["FORMAT", info.kind], ["SIZE", `${photo.width}×${photo.height}`]];
+        let ty = 92;
+        for (const [k, v] of rows) {
+          c.fillStyle = "#7b766b";
+          c.font = "22px MiSans";
+          c.fillText(k, 72, ty);
+          c.fillStyle = "#171713";
+          c.font = "600 40px MiSans";
+          c.fillText(v, 72, ty + 46);
+          c.fillRect(72, ty + 66, 180, 2);
+          ty += 132;
+        }
+      } else {
+        c.fillStyle = "#171713";
+        c.font = "600 22px MiSans";
+        const tag = `${info.label}  ${info.kind}`;
+        c.fillText(tag, x + w + mat - c.measureText(tag).width, y + h + mat + 18);
+      }
     }
     c.fillStyle = "#2b2a25";
     c.font = "600 26px MiSans";
-    c.fillText(record?.photo ? "MEMORY ARCHIVE" : "AWAITING ARCHIVE", 72, H - 40);
+    c.fillText(photo ? "MEMORY ARCHIVE" : "AWAITING ARCHIVE", 72, H - 40);
     c.font = "26px MiSans";
     const id = record ? record.id : "";
     c.fillText(id, W - 72 - c.measureText(id).width, H - 40);

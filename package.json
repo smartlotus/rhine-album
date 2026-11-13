@@ -21,7 +21,9 @@
     "photos": "node scripts/build-photos.mjs",
     "add-photos": "node scripts/add-photos.mjs",
     "build:pages": "BASE_PATH=/rhine-album/ npm run build",
-    "deploy:pages": "npm run build:pages && node scripts/deploy-pages.mjs"
+    "deploy:pages": "npm run build:pages && node scripts/deploy-pages.mjs",
+    "check:ratio": "node --experimental-strip-types --test scripts/check-ratio-test.mjs",
+    "check:landscape": "node scripts/check-landscape.mjs"
   },
   "dependencies": {
     "@kitlangton/rolling-number": "0.4.1",

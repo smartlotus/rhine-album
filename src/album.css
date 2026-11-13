@@ -5,7 +5,7 @@ html.album-locked, html.album-locked body { overscroll-behavior: none; }
 /* Photo inside the dossier (detail panel) */
 .album-photo { margin: 18px 0 16px; }
 .album-photo-frame {
-  position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 300px; padding: 0;
+  position: relative; display: flex; align-items: center; justify-content: center; width: 100%; padding: 12px;
   border: 1px solid #b8b1a4; cursor: zoom-in; overflow: hidden;
   background: #dcd6cc linear-gradient(90deg, #0000 calc(100% - 1px), #00000010 0) 0 0 / 24px 24px,
     linear-gradient(#0000 calc(100% - 1px), #00000010 0) 0 0 / 24px 24px;
@@ -15,10 +15,22 @@ html.album-locked, html.album-locked body { overscroll-behavior: none; }
   border: solid #080a08; border-width: 2px 0 0 2px; left: -1px; top: -1px;
 }
 .album-photo-frame::after { left: auto; top: auto; right: -1px; bottom: -1px; border-width: 0 2px 2px 0; }
-.album-photo-frame picture { display: block; height: 100%; width: auto; max-width: 100%; box-shadow: 0 10px 30px #0002; }
-.album-photo-frame img { height: 100%; object-fit: contain; }
-[data-layout="desktop"] .album-photo-frame { height: 330px; }
-[data-layout="portrait"] .album-photo-frame { height: 360px; }
+/* The print keeps the photo's own ratio (--ar = width / height from the manifest):
+   portrait prints stand tall on the drafting mat, landscape ones fill its width. */
+.album-photo { --ph-max: 300px; }
+[data-layout="desktop"] .album-photo { --ph-max: 340px; }
+[data-layout="portrait"] .album-photo { --ph-max: min(400px, 52svh); }
+.album-photo-frame picture {
+  display: block; flex: none; width: min(100%, calc(var(--ph-max) * var(--ar, 1))); height: auto;
+  aspect-ratio: var(--ar, 1) !important; outline: 6px solid #f4f1ea; box-shadow: 0 0 0 7px #171713, 0 14px 34px #0003;
+}
+.album-photo-frame img { object-fit: contain; }
+.album-photo[data-kind="landscape"] .album-photo-frame { padding: 14px 14px 16px; }
+.album-photo-frame .ph-ratio {
+  position: absolute; right: 8px; bottom: 8px; z-index: 2; font-size: 10px; letter-spacing: 1.4px; padding: 3px 6px;
+  background: #171713; color: #eee9de; pointer-events: none; font-variant-numeric: tabular-nums;
+}
+.album-photo[data-kind="landscape"] .ph-ratio { bottom: 2px; right: 2px; }
 .album-photo-frame .ph-hud {
   position: absolute; left: 8px; bottom: 8px; z-index: 2; display: flex; gap: 8px; align-items: center;
   font-size: 10px; letter-spacing: 1.6px; color: #f3efe8; text-shadow: 0 1px 3px #0008; pointer-events: none;
@@ -80,7 +92,12 @@ picture.loaded img { opacity: 1; }
 }
 .lb-photo.dragging { transition: none; }
 .lb-photo.zoomed { cursor: grab; }
-.lb-photo picture { max-width: 100%; max-height: 100%; height: 100%; width: auto; display: block; }
+.lb-frame { container-type: size; }
+.lb-photo picture { display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; }
+@supports (width: 1cqw) {
+  /* Contain: the largest box with the photo's own ratio that fits the frame, in either orientation. */
+  .lb-photo picture { width: min(100cqw, calc(100cqh * var(--ar, 1))); height: auto; max-height: none; aspect-ratio: var(--ar, 1) !important; }
+}
 .lb-photo img { object-fit: contain; }
 .lb-photo.lb-out { animation: lb-out .4s cubic-bezier(.4,0,.2,1) both; pointer-events: none; }
 @keyframes lb-in { from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translate3d(calc(var(--dir) * 26px), 0, 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
@@ -113,9 +130,13 @@ picture.loaded img { opacity: 1; }
 .sheet-volume header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid #080a08; margin-bottom: 10px; font-size: 10px; letter-spacing: 1.8px; }
 .sheet-volume header strong { font-size: 15px; letter-spacing: .5px; }
 .sheet-volume header i { margin-left: auto; font-style: normal; color: #6e6a60; }
-.sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
-.sheet-item { min-width: 0; }
-.sheet-item { position: relative; display: block; aspect-ratio: 1; overflow: hidden; border: 1px solid #b8b1a4; text-align: left; }
+/* Justified rows: each print's width follows its own ratio, rows share a height. */
+.sheet-grid { --row: 132px; display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet-item {
+  position: relative; display: block; min-width: 0; overflow: hidden; border: 1px solid #b8b1a4; text-align: left;
+  flex: var(--ar, 1) 1 calc(var(--row) * var(--ar, 1)); aspect-ratio: var(--ar, 1); max-width: 100%;
+}
+.sheet-fill { flex: 1000 1 0; height: 0; }
 .sheet-item picture { width: 100%; height: 100%; aspect-ratio: auto !important; }
 .sheet-item img { object-fit: cover; transition: opacity .45s ease, transform .5s cubic-bezier(.2,.7,.1,1); }
 .sheet-item:hover img { transform: scale(1.04); }
@@ -129,7 +150,7 @@ picture.loaded img { opacity: 1; }
   .lb-stage { margin: 18px 48px; }
   .lb-actions { justify-content: flex-end; }
   .lb-actions button { flex: none; min-width: 300px; }
-  .sheet-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .sheet-grid { --row: 190px; gap: 12px; }
   .sheet-panel h2 { font-size: 44px; }
 }
 
@@ -163,3 +184,85 @@ picture.loaded img { opacity: 1; }
 .fallback-tile img { object-fit: cover; }
 @keyframes fallback-rise { from { opacity: 0; transform: translateY(30px); } }
 .reduce-motion .fallback-tile { animation: none; }
+
+/* ---------- Landscape phones (short + wide): side column for meta and actions ---------- */
+@media (orientation: landscape) and (max-height: 540px) {
+  .album-lightbox {
+    grid-template-columns: minmax(0, 1fr) clamp(220px, 32vw, 300px);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+  .lb-top { grid-column: 1 / -1; padding: 6px 16px 4px; }
+  .lb-close { min-height: 40px; }
+  .lb-stage { grid-column: 1; grid-row: 2 / 5; margin: 8px 10px 10px 14px; }
+  .lb-frame { inset: 6px; }
+  .lb-bottom {
+    grid-column: 2; grid-row: 3; border-top: 0; padding: 6px 14px 4px 4px;
+    grid-template-columns: 44px 1fr 44px; grid-template-areas: "meta meta meta" "prev count next"; row-gap: 10px;
+  }
+  .lb-bottom .lb-meta { grid-area: meta; }
+  .lb-bottom [data-lb="prev"] { grid-area: prev; }
+  .lb-bottom [data-lb="next"] { grid-area: next; }
+  .lb-count { grid-area: count; text-align: center; }
+  .lb-sub { white-space: normal; line-height: 1.5; }
+  .lb-actions { grid-column: 2; grid-row: 4; flex-direction: column; gap: 8px; padding: 4px 14px 12px 4px; }
+  .lb-actions button { flex: none; min-width: 0; }
+  .sheet-panel h2 { margin: 8px 18px 2px; font-size: 22px; flex-direction: row; align-items: baseline; gap: 12px; }
+  .sheet-panel .lb-top { padding-top: 4px; padding-bottom: 2px; }
+  .sheet-grid { --row: 104px; }
+  .sheet-volume { margin-top: 10px; }
+  .sheet-bottom { padding: 6px 18px 8px; }
+  .album-photo { --ph-max: min(230px, 58svh); }
+  .arrival-badge { bottom: auto; top: max(12px, env(safe-area-inset-top)); }
+}
+
+/* ---------- Orientation change: Rhine-style scan wipe ---------- */
+.orient-veil {
+  position: fixed; inset: 0; z-index: 3000; pointer-events: none; visibility: hidden; overflow: hidden;
+  color: #171713; font-family: "MiSans", "PingFang SC", system-ui, sans-serif;
+  background: #e8e5e1 linear-gradient(90deg, #0000 calc(100% - 1px), #00000012 0) 0 0 / 32px 32px,
+    linear-gradient(#0000 calc(100% - 1px), #00000012 0) 0 0 / 32px 32px;
+}
+.orient-veil[data-dark="true"] { color: #ece6da; background-color: #141512; }
+.orient-veil.on { visibility: visible; }
+.orient-veil .ov-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: #ed821b; box-shadow: 0 0 18px #ed821b; }
+.orient-veil .ov-label {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; gap: 6px; justify-items: center;
+  font-size: 10px; letter-spacing: 2.4px; white-space: nowrap;
+}
+.orient-veil .ov-label b { font-size: 22px; letter-spacing: 1px; font-weight: 600; }
+.orient-veil .ov-label i { width: 6px; height: 6px; background: #ed821b; display: inline-block; margin-right: 8px; }
+.orient-veil .ov-ticks { position: absolute; inset: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.orient-veil .ov-ticks::before, .orient-veil .ov-ticks::after { content: ""; position: absolute; width: 18px; height: 18px; border: solid currentColor; }
+.orient-veil .ov-ticks::before { left: 0; top: 0; border-width: 2px 0 0 2px; }
+.orient-veil .ov-ticks::after { right: 0; bottom: 0; border-width: 0 2px 2px 0; }
+.orient-veil.cover { animation: ov-cover .24s cubic-bezier(.4, 0, .2, 1) both; }
+.orient-veil.cover .ov-scan { animation: ov-line .24s cubic-bezier(.4, 0, .2, 1) both; }
+.orient-veil.cover .ov-label { animation: ov-label-in .3s cubic-bezier(.2, .7, .1, 1) both; }
+.orient-veil.reveal { animation: ov-reveal .62s cubic-bezier(.3, .6, .2, 1) both; }
+.orient-veil.reveal .ov-scan { animation: ov-line .62s cubic-bezier(.3, .6, .2, 1) both; }
+.orient-veil.reveal .ov-label { animation: ov-label-out .3s ease both; }
+@keyframes ov-cover { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+@keyframes ov-reveal { from { clip-path: inset(0); } to { clip-path: inset(100% 0 0 0); } }
+@keyframes ov-line { from { top: 0; } to { top: calc(100% - 2px); } }
+@keyframes ov-label-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.96); filter: blur(4px); } }
+@keyframes ov-label-out { to { opacity: 0; transform: translate(-50%, -50%) scale(1.03); filter: blur(4px); } }
+.orient-veil.rm { opacity: 0; transition: opacity .2s linear, visibility 0s linear .2s; }
+.orient-veil.rm.on { opacity: 1; transition: opacity .12s linear; }
+.orient-veil.rm .ov-scan { display: none; }
+/* Short landscape: the icon labels under 相册 / 设置 would sit on the dossier's first line. */
+@media (orientation: landscape) and (max-height: 440px) {
+  #stage[data-layout="compact"] .settings-label { display: none; }
+}
+
+/* ---------- Safe areas (notch / Dynamic Island) for the archive chrome ----------
+   The original places the back link, dossier and 360° viewer heading at fixed tops under the brand; on a notched
+   iPhone in portrait the brand moves down by the inset and would sit on them. Same values when the inset is 0. */
+#stage[data-layout="portrait"] .back-button { top: calc(var(--top-edge) + 61px); }
+#stage[data-layout="compact"] .back-button { top: calc(var(--top-edge) + 68px); }
+#stage[data-layout="compact"] .detail-content { top: calc(var(--top-edge) + 68px); bottom: calc(var(--bottom-edge) + 41px); }
+#stage[data-layout="portrait"] .viewer-heading { top: calc(var(--top-edge) + 32px); }
+#stage[data-layout="portrait"] .viewer-canvas { top: calc(var(--top-edge) + 109px); }
+@media (max-height: 440px) and (orientation: landscape) {
+  #stage[data-layout="compact"] .back-button { top: calc(var(--top-edge) + 44px); }
+  #stage[data-layout="compact"] .detail-content { top: calc(var(--top-edge) + 54px); bottom: calc(var(--bottom-edge) + 19px); }
+}

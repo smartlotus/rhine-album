@@ -42,10 +42,13 @@ import {
   Lightbox,
   ContactSheet,
   pictureMarkup,
+  ratioInfo,
+  ratioStyle,
   photoUrl,
   mountFallbackWall,
   arrivalSource,
 } from "./album";
+import { mountOrientationTransition } from "./orientation-transition";
 import { TerminalAudio } from "./audio";
 import { audioSettingsMarkup } from "./audio-settings";
 import {
@@ -502,6 +505,12 @@ window.visualViewport?.addEventListener("resize", fit);
 window.visualViewport?.addEventListener("scroll", fit);
 matchMedia("(pointer: coarse)").addEventListener("change", fit);
 fit();
+// Turning the phone: never locked; a scan-wipe veil covers the re-fit (album layer).
+mountOrientationTransition({
+  reduced: () => $("#stage").classList.contains("reduce-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches,
+  dark: () => document.documentElement.dataset.darkSurface === "true",
+  refit: () => { previousLayout = ""; fit(); },
+});
 $("#file-ticks").innerHTML = columnFiles(fileLocation(selected).lane)
   .map((index) => `<button data-select="${index}"></button>`)
   .join("");
@@ -731,7 +740,7 @@ function renderDetail() {
   $("#object-id").textContent = "NO." + String(selected + 1).padStart(3, "0");
   const photoIndex = photoRecordIndexes.indexOf(selected);
   const figure = r.photo
-    ? `<figure class="album-photo"><button class="album-photo-frame" data-action="photo-open" aria-label="全屏查看 ${escapeHtml(r.title)}">${pictureMarkup(r, "mid", { eager: true })}<span class="ph-hud"><i></i>${r.id}</span><span class="ph-open">VIEW ↗</span></button><figcaption class="album-photo-caption"><span>${r.photo.width} × ${r.photo.height}</span><span>${String(photoIndex + 1).padStart(3, "0")} / ${String(photoRecordIndexes.length).padStart(3, "0")}</span></figcaption></figure>`
+    ? `<figure class="album-photo" data-kind="${ratioInfo(r.photo.width, r.photo.height).kind.toLowerCase()}" style="${ratioStyle(r)}"><button class="album-photo-frame" data-action="photo-open" aria-label="全屏查看 ${escapeHtml(r.title)}">${pictureMarkup(r, "mid", { eager: true })}<span class="ph-hud"><i></i>${r.id}</span><span class="ph-open">VIEW ↗</span><span class="ph-ratio">${ratioInfo(r.photo.width, r.photo.height).label}</span></button><figcaption class="album-photo-caption"><span>${r.photo.width} × ${r.photo.height} · ${ratioInfo(r.photo.width, r.photo.height).kind}</span><span>${String(photoIndex + 1).padStart(3, "0")} / ${String(photoRecordIndexes.length).padStart(3, "0")}</span></figcaption></figure>`
     : `<div class="album-awaiting"><div><strong>AWAITING ARCHIVE</strong><p>此卷暂无照片</p></div></div>`;
   $("#detail-content").innerHTML = `
   <div class="detail-kicker"><span>FILE ${r.id}</span><span>${escapeHtml(r.clearance)}</span></div>
