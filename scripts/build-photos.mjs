@@ -59,11 +59,11 @@ for (const photo of photos) {
   for (const [name, edge] of Object.entries(SIZES)) {
     const resized = sharp(oriented).resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true });
     const webpName = `photos/${key}-${name}.webp`;
-    await resized.clone().webp({ quality: name === "thumb" ? 72 : 82, effort: 5 }).toFile(fileURLToPath(new URL(webpName, root.href + "public/")));
+    await resized.clone().webp({ quality: name === "thumb" ? 78 : 88, effort: 5 }).toFile(fileURLToPath(new URL(webpName, root.href + "public/")));
     src[name] = { webp: webpName };
     if (name !== "thumb") {
       const avifName = `photos/${key}-${name}.avif`;
-      await resized.clone().avif({ quality: 58, effort: 4 }).toFile(fileURLToPath(new URL(avifName, root.href + "public/")));
+      await resized.clone().avif({ quality: 72, effort: 4 }).toFile(fileURLToPath(new URL(avifName, root.href + "public/")));
       src[name].avif = avifName;
     }
   }
