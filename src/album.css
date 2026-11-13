@@ -66,7 +66,8 @@ picture.loaded img { opacity: 1; }
 /* ---------- Full-screen viewer ---------- */
 .album-lightbox, .album-sheet {
   position: fixed; inset: 0; z-index: 1000; color: #080a08; font-family: "MiSans", "PingFang SC", system-ui, sans-serif;
-  background: rgba(232, 229, 225, .97); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  background: rgba(232, 229, 225, .97);
+  /* No backdrop blur: at 97 % opacity it is invisible, but it re-filtered the live 3D canvas every frame. */
   opacity: 0; transition: opacity .32s ease; touch-action: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }

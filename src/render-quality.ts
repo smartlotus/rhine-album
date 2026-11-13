@@ -23,6 +23,19 @@ export const qualityPresets = {
     transmission: 0.5,
     anisotropy: 4,
   },
+  // Phones / touch devices start here: the original look (same DOF, AO, glass,
+  // 1.5× pixel ratio) with half the AO kernel, 1024 shadows and lighter glass.
+  balanced: {
+    scale: 100,
+    pixelRatio: 1.5,
+    antialias: "off",
+    shadows: 1024,
+    aoSamples: 16,
+    aoResolution: 1,
+    depthOfField: 100,
+    transmission: 0.75,
+    anisotropy: 8,
+  },
   original: {
     scale: 100,
     pixelRatio: 1.5,
@@ -60,6 +73,7 @@ export const qualityPresets = {
 export type QualityPreset = keyof typeof qualityPresets;
 export const presetLabels: Record<QualityPreset, string> = {
   performance: "性能",
+  balanced: "均衡（手机默认）",
   original: "原始",
   high: "高",
   ultra: "极高",
@@ -148,4 +162,13 @@ export function renderDimensions(
     height: Math.max(1, Math.floor(height * ratio)),
     limited: ratio < requested - 0.0001,
   };
+}
+
+/** Default for a first visit: phones and small touch screens get "balanced". */
+export function defaultPreset(): QualityPreset {
+  if (typeof matchMedia !== "function") return "original";
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const small = Math.min(screen.width, screen.height) <= 820;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return (touch && small) || memory <= 4 ? "balanced" : "original";
 }

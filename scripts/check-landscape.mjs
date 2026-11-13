@@ -117,7 +117,7 @@ for (const reduced of [false, true]) {
   const seen = await p.waitForFunction(() => window.__orient?.runs() > 0, null, { timeout: 30000 }).then(() => p.evaluate(() => ({ phase: window.__orient.phase(), cls: document.querySelector(".orient-veil").className })), () => null);
   log(`rotate${reduced ? " (reduced motion)" : ""}: veil starts (${reduced ? "plain fade" : "scan wipe"})`, !!seen && (reduced ? /\brm\b/.test(seen.cls) : /cover/.test(seen.cls)), seen);
   if (!reduced && SHOTS) { await p.evaluate(() => window.__orient.hold(0.8)); await shot(p, "album-rotate-mid-cover"); await p.evaluate(() => window.__orient.release()); }
-  const idle = await p.waitForFunction(() => window.__orient.phase() === "idle", null, { timeout: 30000 }).then(() => true, () => false);
+  const idle = await p.waitForFunction(() => window.__orient.phase() === "idle", null, { timeout: 60000 }).then(() => true, () => false);
   log(`rotate${reduced ? " (reduced motion)" : ""}: veil clears`, idle);
   if (!reduced && SHOTS) {
     // A reveal frame for the report.

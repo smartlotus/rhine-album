@@ -32,6 +32,35 @@ const reduced = () => document.querySelector("#stage")?.classList.contains("redu
 
 type Hooks = { sound: (name: "page-open" | "page-close" | "tick" | "ui-tick" | "confirm") => void; locate: (recordIndex: number) => void };
 
+let avifSupport: boolean | undefined;
+function avifPreferred() {
+  if (avifSupport === undefined) {
+    const used = document.querySelector<HTMLImageElement>("picture.loaded img")?.currentSrc ?? "";
+    if (used) avifSupport = used.endsWith(".avif");
+  }
+  return avifSupport ?? false;
+}
+function upgradeToFull(holder: HTMLElement, r: ArchiveRecord) {
+  const img = holder.querySelector("img");
+  if (!img || !r.photo) return;
+  const swap = () => {
+    if (!holder.isConnected) return;
+    const avif = img.currentSrc.endsWith(".avif");
+    avifSupport = avif;
+    const url = photoUrl(r, "full", avif ? "avif" : "webp") || photoUrl(r, "full");
+    const full = new Image();
+    full.decoding = "async";
+    full.src = url;
+    full.decode().then(() => {
+      if (!holder.isConnected) return;
+      holder.querySelector("source")?.remove();
+      img.src = url;
+      holder.dataset.res = "full";
+    }).catch(() => {});
+  };
+  if (img.complete && img.naturalWidth) swap(); else img.addEventListener("load", swap, { once: true });
+}
+
 /** Full-screen viewer. Swipe / arrows to move, double-tap or wheel to zoom. */
 export class Lightbox {
   private root: HTMLElement;
@@ -91,7 +120,11 @@ export class Lightbox {
     }, { passive: false });
   }
   get isOpen() { return this.openState; }
+  private openedAt = 0;
+  /** Fully faded in: the opaque viewer hides everything under it. */
+  get covering() { return this.openState && performance.now() - this.openedAt > 420; }
   open(recordIndex: number) {
+    this.openedAt = performance.now();
     const at = this.list.indexOf(recordIndex);
     if (at < 0) return;
     this.lastFocus = document.activeElement as HTMLElement;
@@ -129,7 +162,10 @@ export class Lightbox {
     holder.className = "lb-photo";
     holder.style.setProperty("--dir", String(direction));
     if (r.photo) { holder.style.setProperty("--ar", String(r.photo.width / r.photo.height)); holder.dataset.kind = ratioInfo(r.photo.width, r.photo.height).kind.toLowerCase(); }
-    holder.innerHTML = pictureMarkup(r, "full", { eager: true });
+    // Show the dossier-size file at once (usually cached), then swap in the
+    // full file once it is decoded off the main thread.
+    holder.innerHTML = pictureMarkup(r, "mid", { eager: true });
+    upgradeToFull(holder, r);
     frame.querySelectorAll(".lb-photo").forEach((old) => {
       old.classList.add("lb-out");
       setTimeout(() => old.remove(), reduced() ? 0 : 420);
@@ -139,7 +175,7 @@ export class Lightbox {
     // Preload neighbours so swiping feels instant.
     for (const d of [-1, 1]) {
       const n = records[this.list[(this.at + d + this.list.length) % this.list.length]];
-      const img = new Image(); img.decoding = "async"; img.src = photoUrl(n, "full");
+      const img = new Image(); img.decoding = "async"; img.src = photoUrl(n, "mid", avifPreferred() ? "avif" : "webp") || photoUrl(n, "mid");
     }
     this.root.querySelector(".lb-id")!.textContent = r.id;
     this.root.querySelector(".lb-title")!.textContent = r.title;
@@ -258,7 +294,10 @@ export class ContactSheet {
     }, true);
   }
   get isOpen() { return this.openState; }
+  private openedAt = 0;
+  get covering() { return this.openState && performance.now() - this.openedAt > 420; }
   open() {
+    this.openedAt = performance.now();
     this.lastFocus = document.activeElement as HTMLElement;
     this.openState = true;
     this.root.hidden = false;

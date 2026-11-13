@@ -243,8 +243,32 @@ export class ArchiveScene {
   // substrate, behind the optical rings, so the glass reveal uncovers it.
   private printCanvas = document.createElement("canvas");
   private printTexture?: THREE.CanvasTexture;
-  private printImages = new Map<string, HTMLImageElement>();
+  private printImages = new Map<string, PrintImage>();
   private printIndex = -1;
+  /** Automatic resolution step (1 = the chosen quality), lowered when frames drop. */
+  private dynamicScale = 1;
+  setDynamicScale(scale: number) {
+    if (Math.abs(scale - this.dynamicScale) < 0.001) return;
+    this.dynamicScale = scale;
+    this.resize();
+  }
+  get renderCount() { return this.renderedFrames; }
+  /** Review hook: time N forced full renders (GPU-synchronised with a 1-pixel read). */
+  benchRender(frames: number) {
+    const gl = this.renderer.getContext();
+    const pixel = new Uint8Array(4);
+    const times: number[] = [];
+    for (let i = 0; i < frames; i++) {
+      this.renderState.invalidate();
+      this.renderer.shadowMap.needsUpdate = true;
+      const start = performance.now();
+      if (this.superPerformance) this.renderer.render(this.scene, this.camera);
+      else this.composer.render();
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      times.push(performance.now() - start);
+    }
+    return times;
+  }
   private labelTexture?: THREE.CanvasTexture;
   private labelMark = new Image();
   private motion: MotionPreferences = fullMotion();
@@ -751,11 +775,10 @@ export class ArchiveScene {
         transparent: true,
         depthWrite: false,
       });
-      const clonedPrint = group.children.find((child) => child.userData.photoPrint) as THREE.Mesh | undefined;
-      if (clonedPrint) {
-        const snapshot = clonedPrint.visible ? this.snapshotPrint() : undefined;
-        if (snapshot) clonedPrint.material = snapshot.material;
-      }
+      // The outgoing copy keeps the live print (already on the GPU) and the
+      // selected cassette gets a fresh canvas: no 1024×744 copy + re-upload per
+      // step, and an empty slot's copy never disposes the live print material.
+      if (group.children.some((child) => child.userData.photoPrint)) this.renewPrint();
       // Clone carries the selected label material by reference. Replace it
       // before installing appearance shaders, so theme hooks are not appended
       // to the original label a second time on every selection.
@@ -850,26 +873,53 @@ export class ArchiveScene {
     map.anisotropy = this.printTexture.anisotropy;
     return this.createPrintMesh(map);
   }
+  private renewPrint() {
+    const print = this.model.children.find((child) => child.userData.photoPrint) as THREE.Mesh | undefined;
+    if (!print || !this.printTexture) return;
+    const previous = print.material as THREE.MeshStandardMaterial;
+    const canvas = document.createElement("canvas");
+    canvas.width = this.printCanvas.width;
+    canvas.height = this.printCanvas.height;
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = this.printTexture.anisotropy;
+    this.printCanvas = canvas;
+    this.printTexture = map;
+    const material = new THREE.MeshStandardMaterial({ map, roughness: 0.62, metalness: 0 });
+    material.opacity = previous.opacity;
+    print.material = material;
+    // select() repaints the new canvas right after (drawLabel → drawPrint).
+  }
+  private printUrl(index: number) {
+    const photo = records[index]?.photo;
+    return photo ? publicAsset(photo.src.mid.webp) : "";
+  }
   private drawPrint(index: number) {
     if (!this.printTexture) return;
     this.printIndex = index;
-    const record = records[index];
-    const url = record?.photo ? publicAsset(record.photo.src.mid.webp) : "";
-    let image = url ? this.printImages.get(url) : undefined;
-    if (url && !image) {
-      image = new Image();
-      image.decoding = "async";
-      image.onload = () => {
-        if (this.printIndex === index) this.paintPrint(index, image);
-      };
-      image.src = url;
-      this.printImages.set(url, image);
+    const url = this.printUrl(index);
+    let entry = url ? this.printImages.get(url) : undefined;
+    if (url && !entry) {
+      const fresh: PrintImage = {};
+      entry = fresh;
+      this.printImages.set(url, fresh);
+      // Decode off the main thread, already scaled to the print's photo box
+      // (≤ 896 px), instead of decoding the 1080 px file during drawImage.
+      void decodePrintImage(url, printPhotoSize(records[index].photo!)).then((bitmap) => {
+        if (this.printImages.get(url) !== fresh) { closeBitmap(bitmap); return; }
+        fresh.bitmap = bitmap;
+        if (this.printIndex === index) this.paintPrint(index, bitmap);
+      }).catch(() => this.printImages.delete(url));
       // Keep a small cache; the array can be browsed quickly.
-      if (this.printImages.size > 10) this.printImages.delete(this.printImages.keys().next().value!);
+      while (this.printImages.size > 8) {
+        const [key, old] = this.printImages.entries().next().value!;
+        closeBitmap(old.bitmap);
+        this.printImages.delete(key);
+      }
     }
-    this.paintPrint(index, image?.complete && image.naturalWidth ? image : undefined);
+    this.paintPrint(index, entry?.bitmap);
   }
-  private paintPrint(index: number, image?: HTMLImageElement) {
+  private paintPrint(index: number, image?: CanvasImageSource) {
     // Empty slots keep the original, unprinted internals.
     const print = this.model.children.find((child) => child.userData.photoPrint);
     if (print) print.visible = Boolean(records[index]?.photo);
@@ -890,9 +940,7 @@ export class ArchiveScene {
       // fitted, never stretched or cropped. Portrait prints leave a spec column.
       const ratio = photo.width / photo.height;
       const portrait = ratio < 1.04;
-      const box = portrait ? { x: 300, y: 54, w: W - 300 - 64, h: H - 160 } : { x: 64, y: 54, w: W - 128, h: H - 160 };
-      const fit = Math.min(box.w / ratio, box.h);
-      const h = fit, w = fit * ratio;
+      const { box, w, h } = printPhotoBox(photo, W, H);
       const x = Math.round(box.x + (box.w - w) / 2), y = Math.round(box.y + (box.h - h) / 2);
       const mat = 14;
       c.save();
@@ -983,7 +1031,7 @@ export class ArchiveScene {
       this.renderer,
       this.composer,
       this.container,
-      this.quality,
+      this.dynamicScale === 1 ? this.quality : { ...this.quality, scale: this.quality.scale * this.dynamicScale },
       this.superPerformance,
     );
     this.ao.setSize(
@@ -1991,6 +2039,8 @@ export class ArchiveScene {
       renderedFrames: this.renderedFrames,
       reusedFrames: this.reusedFrames,
       superPerformance: this.superPerformance,
+      dynamicScale: this.dynamicScale,
+      memory: { ...this.renderer.info.memory },
       presentation: this.presence,
       triangles: this.renderer.info.render.triangles,
       archiveCount: this.drawnCells.length,
@@ -2060,4 +2110,34 @@ export class ArchiveScene {
       rail: Math.round(this.rail.value * 1000) / 1000,
     };
   }
+}
+
+type PrintImage = { bitmap?: ImageBitmap | HTMLImageElement };
+/** Photo area of the 1024 × 744 print; the photo keeps its own ratio. */
+function printPhotoBox(photo: { width: number; height: number }, W = 1024, H = 744) {
+  const ratio = photo.width / photo.height;
+  const portrait = ratio < 1.04;
+  const box = portrait ? { x: 300, y: 54, w: W - 300 - 64, h: H - 160 } : { x: 64, y: 54, w: W - 128, h: H - 160 };
+  const h = Math.min(box.w / ratio, box.h);
+  return { box, w: h * ratio, h };
+}
+function printPhotoSize(photo: { width: number; height: number }) {
+  const { w, h } = printPhotoBox(photo);
+  return { width: Math.round(w), height: Math.round(h) };
+}
+function closeBitmap(bitmap?: ImageBitmap | HTMLImageElement) {
+  if (bitmap && "close" in bitmap) bitmap.close();
+}
+async function decodePrintImage(url: string, size: { width: number; height: number }): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const blob = await (await fetch(url)).blob();
+      return await createImageBitmap(blob, { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: "high" });
+    } catch { /* Older Safari: fall back to an <img> decode. */ }
+  }
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  await image.decode();
+  return image;
 }

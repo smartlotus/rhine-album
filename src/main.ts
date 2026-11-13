@@ -7,6 +7,7 @@ import { escapeHtml } from "./html";
 import {
   normalizeQuality,
   qualityPresets,
+  defaultPreset,
   type QualityPreset,
   type RenderQuality,
 } from "./render-quality";
@@ -200,6 +201,7 @@ const storedPrefs = readLocal<
     quality: boolean;
     rendering: RenderQuality;
     superPerformance: boolean;
+    autoQuality: boolean;
     colorTheme: "light" | "dark";
     motion: StoredMotion;
     motionPreset: MotionPreset;
@@ -222,10 +224,12 @@ const prefs = {
   motionPreset: initialMotionPreset,
   quality: storedPrefs.quality ?? true,
   superPerformance: storedPrefs.superPerformance ?? false,
-  rendering: normalizeQuality(
-    storedPrefs.rendering,
-    storedPrefs.quality !== false,
-  ),
+  // Until the visitor picks a preset, the device decides (phones: balanced).
+  autoQuality: storedPrefs.autoQuality ?? storedPrefs.rendering === undefined,
+  rendering:
+    (storedPrefs.autoQuality ?? storedPrefs.rendering === undefined) && !isWallpaper
+      ? { ...qualityPresets[defaultPreset()] }
+      : normalizeQuality(storedPrefs.rendering, storedPrefs.quality !== false),
   colorTheme: storedPrefs.colorTheme === "dark" ? "dark" : "light",
 };
 const motionActive = (key: MotionKey) => motionEnabled(prefs.motion, key);
@@ -514,7 +518,7 @@ mountOrientationTransition({
 $("#file-ticks").innerHTML = columnFiles(fileLocation(selected).lane)
   .map((index) => `<button data-select="${index}"></button>`)
   .join("");
-const fileTicks = [
+let fileTicks = [
   ...$("#file-ticks").querySelectorAll<HTMLButtonElement>("button"),
 ];
 
@@ -536,6 +540,7 @@ function setMode(next: Mode) {
   if (workbench?.enabled && next === "detail") next = "archive";
   if (next !== "boot") showArrival();
   const previousMode = mode;
+  lastDetailVisibility = -1;
   rollingTitles.forEach((title) =>
     title.update({
       animated: motionActive("rollingText") && next === "archive",
@@ -677,6 +682,11 @@ function updateSelection(navigation?: ArchiveNavigation) {
   });
   $<HTMLButtonElement>('[data-action="column-prev"]').disabled = false;
   $<HTMLButtonElement>('[data-action="column-next"]').disabled = false;
+  // Volumes hold different numbers of photos: keep one tick per file.
+  if (fileTicks.length !== files.length) {
+    $("#file-ticks").innerHTML = files.map((index) => `<button data-select="${index}"></button>`).join("");
+    fileTicks = [...$("#file-ticks").querySelectorAll<HTMLButtonElement>("button")];
+  }
   fileTicks.forEach((button, slot) => {
     const index = files[slot],
       record = records[index];
@@ -953,6 +963,8 @@ document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id === "quality-preset" && Object.hasOwn(qualityPresets, el.value)) {
     prefs.rendering = { ...qualityPresets[el.value as QualityPreset] };
+    prefs.autoQuality = false;
+    resetDynamicResolution();
     savePrefs();
   } else if (el.dataset.quality) {
     const key = el.dataset.quality as keyof RenderQuality;
@@ -960,6 +972,8 @@ document.addEventListener("change", (e) => {
       ...prefs.rendering,
       [key]: key === "antialias" ? el.value : Number(el.value),
     });
+    prefs.autoQuality = false;
+    resetDynamicResolution();
     savePrefs();
   }
   if (el.dataset.pref) {
@@ -1331,6 +1345,46 @@ let lastTime = 0,
   frameCount = 0,
   frameStart = performance.now(),
   fps = 0;
+// Dynamic resolution (automatic quality only): when rendered frames fall
+// under ~48 fps for 2 s, step the render scale down (to 67 % at most); step it
+// back up after sustained 57+ fps. Idle (reused) frames do not count.
+const dynamic = { scale: 1, frames: 0, time: 0, last: 0, rendered: -1, good: 0, changedAt: 0 };
+function resetDynamicResolution() {
+  Object.assign(dynamic, { scale: 1, frames: 0, time: 0, good: 0 });
+  scene?.setDynamicScale(1);
+}
+function adaptResolution(ms: number) {
+  if (!scene || !prefs.autoQuality || isWallpaper || superPerformanceEnabled()) return;
+  const count = scene.renderCount;
+  const delta = dynamic.last ? ms - dynamic.last : 0;
+  dynamic.last = ms;
+  const rendered = count !== dynamic.rendered;
+  dynamic.rendered = count;
+  if (!rendered || delta <= 0 || delta > 500) return;
+  dynamic.frames++;
+  dynamic.time += delta;
+  if (dynamic.time < 2000) return;
+  const rate = (dynamic.frames * 1000) / dynamic.time;
+  dynamic.frames = 0;
+  dynamic.time = 0;
+  if (ms - dynamic.changedAt < 3000) return;
+  let next = dynamic.scale;
+  if (rate < 48) {
+    next = Math.max(0.67, +(dynamic.scale - 0.11).toFixed(2));
+    dynamic.good = 0;
+  } else if (rate > 57 && dynamic.scale < 1 && ++dynamic.good >= 3) {
+    next = Math.min(1, +(dynamic.scale + 0.11).toFixed(2));
+    dynamic.good = 0;
+  }
+  if (next !== dynamic.scale) {
+    dynamic.scale = next;
+    dynamic.changedAt = ms;
+    scene.setDynamicScale(next);
+    updateQualitySummary();
+  }
+}
+let lastDetailVisibility = -1,
+  lastDetailShade = "";
 function frame(ms: number) {
   if (!wallpaperFrame(ms)) {
     requestAnimationFrame(frame);
@@ -1356,8 +1410,11 @@ function frame(ms: number) {
     motionActive("pointerParallax"),
   );
   // The calibrated 2D opening fully covers the scene until array entry.
-  if (!viewer?.isOpen && (!cinema || cinema.time >= 21.9))
+  // Skip the 3D work while an opaque album overlay fully covers it.
+  if (!viewer?.isOpen && !lightbox.covering && !sheet.covering && (!cinema || cinema.time >= 21.9)) {
     scene?.update(time, cinema);
+    adaptResolution(ms);
+  } else dynamic.last = 0;
   viewer?.update(time);
   if (threeState === "closing" && scene?.presentationHidden) releaseThree();
   playground?.position();
@@ -1367,10 +1424,15 @@ function frame(ms: number) {
       scene.decryptionFrame,
       !motionActive("documentReveal"),
     );
-    $("#detail-content").style.opacity = String(scene.detailVisibility);
-    $("#detail-content").style.translate =
-      `0 ${(1 - scene.detailVisibility) * 18}px`;
-    $("#detail-content").inert = scene.detailVisibility < 0.1;
+    // Write only on change: per-frame style writes re-run style for the stage.
+    const visibility = Math.round(scene.detailVisibility * 1000) / 1000;
+    if (visibility !== lastDetailVisibility) {
+      lastDetailVisibility = visibility;
+      const content = $("#detail-content");
+      content.style.opacity = String(visibility);
+      content.style.translate = `0 ${(1 - visibility) * 18}px`;
+      content.inert = visibility < 0.1;
+    }
     if (
       pendingDetailFocus &&
       scene.detailVisibility >= 0.1 &&
@@ -1381,10 +1443,13 @@ function frame(ms: number) {
       pendingDetailFocus = false;
     }
   }
-  $("#stage").style.setProperty(
-    "--detail-shade",
-    String(mode === "boot" ? 0 : (scene?.detailVisibility ?? 0)),
+  const shade = String(
+    mode === "boot" ? 0 : Math.round((scene?.detailVisibility ?? 0) * 1000) / 1000,
   );
+  if (shade !== lastDetailShade) {
+    lastDetailShade = shade;
+    $("#stage").style.setProperty("--detail-shade", shade);
+  }
   const currentScene = scene;
   if (currentScene)
     inspectionOverlay.render(
@@ -1838,10 +1903,13 @@ Object.assign(window, {
     archive: () => setMode("archive"),
     detail: () => openFile(),
     select: (i: number) => select(i),
+    benchRender: (frames = 5) => scene?.benchRender(frames) ?? null,
     stats: () => ({
       ...scene?.getStats(),
       threeState,
       fps: Math.round(fps),
+      autoQuality: prefs.autoQuality,
+      quality: prefs.rendering,
       mode,
       ready,
       startup: started ? "started" : (entry?.phase ?? "loading"),
