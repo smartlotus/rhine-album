@@ -62,7 +62,16 @@ export const volumes = album.volumes.map((v, i) => ({
   en: text((v as { en?: string }).en) || `VOLUME ${String(i + 1).padStart(2, "0")}`,
 }));
 const manifestPhotos = (album.photos as ManifestPhoto[]).filter((p) => assets[text(p.file)]);
-const autoSize = Math.max(1, Math.ceil(manifestPhotos.length / VOLUMES));
+// Photos without a volume are spread evenly, in order (12 → 3,3,2,2,2).
+const autoVolume = (i: number, n: number) => {
+  const base = Math.floor(n / VOLUMES), extra = n % VOLUMES;
+  let end = 0;
+  for (let v = 1; v <= VOLUMES; v++) {
+    end += base + (v <= extra ? 1 : 0);
+    if (i < end) return v;
+  }
+  return VOLUMES;
+};
 
 export const photoCount = manifestPhotos.length;
 const photoRecords: ArchiveRecord[] = manifestPhotos.map((p, i) => {
@@ -70,7 +79,7 @@ const photoRecords: ArchiveRecord[] = manifestPhotos.map((p, i) => {
   const no = String(i + 1).padStart(3, "0");
   const volume = Number.isInteger(p.volume) && p.volume! >= 1 && p.volume! <= VOLUMES
     ? p.volume!
-    : Math.min(VOLUMES, Math.floor(i / autoSize) + 1);
+    : autoVolume(i, manifestPhotos.length);
   const tags = list(p.tags);
   return {
     id: `X-${no}`,
@@ -89,12 +98,15 @@ const photoRecords: ArchiveRecord[] = manifestPhotos.map((p, i) => {
     file: text(p.file),
   };
 });
-// The array needs at least one file per column; empty volumes show one
-// "awaiting" cassette until photos are added there.
-const placeholders: ArchiveRecord[] = volumes
-  .filter((v) => !photoRecords.some((r) => r.category === v.name))
-  .map((v, i) => ({
-    id: `X-${String(901 + i)}`,
+// Every column needs at least one file. A column without photos gets one
+// "awaiting" cassette; an album with no photos at all keeps the original
+// five-by-eight rhythm so the empty terminal still looks like the original.
+const MIN_PER_VOLUME = photoRecords.length ? 1 : 8;
+let placeholderNo = 0;
+const placeholders: ArchiveRecord[] = volumes.flatMap((v) => {
+  const have = photoRecords.filter((r) => r.category === v.name).length;
+  return Array.from({ length: Math.max(0, MIN_PER_VOLUME - have) }, () => ({
+    id: `X-${String(901 + placeholderNo++)}`,
     title: "待归档",
     en: "AWAITING ARCHIVE",
     department: "—",
@@ -107,6 +119,7 @@ const placeholders: ArchiveRecord[] = volumes
     source: "",
     tags: [],
   }));
+});
 
 export const records: ArchiveRecord[] = [...photoRecords, ...placeholders];
 export const categories = ["全部档案", ...volumes.map((v) => v.name)];

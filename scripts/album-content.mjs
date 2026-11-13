@@ -33,7 +33,12 @@ export function validateAlbum(manifest, generated = {}, { requireGenerated = tru
   const photos = Array.isArray(manifest.photos) ? manifest.photos : [];
   if (!Array.isArray(manifest.photos)) problems.push("photos 必须是数组。");
   const seen = new Set();
-  const autoSize = Math.max(1, Math.ceil(photos.length / VOLUME_COUNT));
+  const n = photos.length, base = Math.floor(n / VOLUME_COUNT), extra = n % VOLUME_COUNT;
+  const autoVolume = (i) => {
+    let end = 0;
+    for (let v = 1; v <= VOLUME_COUNT; v++) { end += base + (v <= extra ? 1 : 0); if (i < end) return v; }
+    return VOLUME_COUNT;
+  };
   const resolved = photos.map((photo, i) => {
     const where = `photos[${i}]`;
     const file = text(photo?.file);
@@ -41,7 +46,7 @@ export function validateAlbum(manifest, generated = {}, { requireGenerated = tru
     else if (seen.has(file)) problems.push(`${where}.file 重复：${file}`);
     seen.add(file);
     let volume = photo?.volume;
-    if (volume === undefined || volume === null || volume === "") volume = Math.min(VOLUME_COUNT, Math.floor(i / autoSize) + 1);
+    if (volume === undefined || volume === null || volume === "") volume = autoVolume(i);
     if (!Number.isInteger(volume) || volume < 1 || volume > VOLUME_COUNT)
       problems.push(`${where}.volume 必须是 1–${VOLUME_COUNT} 的整数（或留空自动分卷）。`);
     if (requireGenerated && file && !generated[file])

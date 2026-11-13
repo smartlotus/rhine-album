@@ -567,7 +567,7 @@ export class ArchiveScene {
       }),
     );
     label.position.set(-1.36, 3.04, 0.255);
-    const printCopy = this.snapshotPrint();
+    const printCopy = this.model.children.find((child) => child.userData.photoPrint)?.visible ? this.snapshotPrint() : undefined;
     if (printCopy) {
       printCopy.userData.assemblyPart = "substrate";
       model.add(printCopy);
@@ -752,7 +752,7 @@ export class ArchiveScene {
       });
       const clonedPrint = group.children.find((child) => child.userData.photoPrint) as THREE.Mesh | undefined;
       if (clonedPrint) {
-        const snapshot = this.snapshotPrint();
+        const snapshot = clonedPrint.visible ? this.snapshotPrint() : undefined;
         if (snapshot) clonedPrint.material = snapshot.material;
       }
       // Clone carries the selected label material by reference. Replace it
@@ -869,6 +869,9 @@ export class ArchiveScene {
     this.paintPrint(index, image?.complete && image.naturalWidth ? image : undefined);
   }
   private paintPrint(index: number, image?: HTMLImageElement) {
+    // Empty slots keep the original, unprinted internals.
+    const print = this.model.children.find((child) => child.userData.photoPrint);
+    if (print) print.visible = Boolean(records[index]?.photo);
     const c = this.printCanvas.getContext("2d")!;
     const W = this.printCanvas.width, H = this.printCanvas.height;
     const record = records[index];

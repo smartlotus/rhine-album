@@ -30,10 +30,10 @@ html.album-locked, html.album-locked body { overscroll-behavior: none; }
 }
 .album-photo-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 7px; font-size: 10px; letter-spacing: 1.4px; color: #77736a; }
 .album-awaiting {
-  display: grid; place-items: center; gap: 6px; aspect-ratio: 4/3; border: 1px dashed #aaa496; color: #8b877b;
+  display: grid; place-items: center; gap: 6px; height: 120px; border: 1px dashed #aaa496; color: #8b877b;
   font-size: 11px; letter-spacing: 2px; text-align: center; margin: 18px 0 16px;
 }
-.album-awaiting strong { font-size: 22px; letter-spacing: 1px; color: #59564e; font-weight: 600; }
+.album-awaiting strong { font-size: 16px; letter-spacing: 1px; color: #59564e; font-weight: 600; }
 
 /* Shared picture: blurred preview first, then a soft fade-in */
 .album-photo-frame picture, .album-lightbox picture, .album-sheet picture, .fallback-tile picture, .result-thumb picture {

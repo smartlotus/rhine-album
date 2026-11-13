@@ -4,10 +4,15 @@ import { validateAlbum } from "./album-content.mjs";
 
 const volumes = [1, 2, 3, 4, 5].map((n) => ({ name: `卷${n}`, en: `V${n}` }));
 const gen = (files) => Object.fromEntries(files.map((f) => [f, { src: {} }]));
-test("photos without a volume are spread over the five volumes in order", () => {
+test("photos without a volume are spread evenly over the five volumes in order", () => {
   const files = Array.from({ length: 14 }, (_, i) => `${i}.jpg`);
   const { photos } = validateAlbum({ volumes, photos: files.map((file) => ({ file })) }, gen(files));
   assert.deepEqual(photos.map((p) => p.volume), [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5]);
+});
+test("12 photos → 3,3,2,2,2", () => {
+  const files = Array.from({ length: 12 }, (_, i) => `${i}.jpg`);
+  const { photos } = validateAlbum({ volumes, photos: files.map((file) => ({ file })) }, gen(files));
+  assert.deepEqual(photos.map((p) => p.volume), [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5]);
 });
 test("explicit volumes are kept", () => {
   const { photos } = validateAlbum({ volumes, photos: [{ file: "a.jpg", volume: 4 }] }, gen(["a.jpg"]));
