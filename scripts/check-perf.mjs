@@ -18,7 +18,7 @@ async function open({ mobile, settings }) {
   await p.waitForFunction(() => window.rhine?.stats()?.startup === "started" && window.rhine.stats().loaded, null, { timeout: 180000 });
   return { ctx, p, errors };
 }
-const quiet = { sound: false, music: false };
+const quiet = { sound: false, music: false, classic3D: true };
 {
   const { ctx, p } = await open({ mobile: true, settings: quiet });
   const s = await p.evaluate(() => rhine.stats());

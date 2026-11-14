@@ -24,7 +24,8 @@
     "deploy:pages": "npm run build:pages && node scripts/deploy-pages.mjs",
     "check:ratio": "node --experimental-strip-types --test scripts/check-ratio-test.mjs",
     "check:landscape": "node scripts/check-landscape.mjs",
-    "check:perf": "node scripts/check-perf.mjs"
+    "check:perf": "node scripts/check-perf.mjs",
+    "check:cabinet": "node scripts/check-cabinet.mjs"
   },
   "dependencies": {
     "@kitlangton/rolling-number": "0.4.1",

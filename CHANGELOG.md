@@ -2,6 +2,16 @@
 
 原项目 RhineLabUI 的更新记录见上游仓库；这里只记相册改造。时间均为北京时间。
 
+## 2026-11-14 首页改版：时间档案柜 + 干员档案卡
+
+- 新增 `src/cabinet.ts` / `src/cabinet.css`：开场结束后进入二维半（DOM + CSS 3D）的「时间档案柜」，抽屉由 `content/album.json` 的 `volumes` 生成；抽屉拉出后照片按各自比例排成档案纸；单张照片打开为干员档案卡（抽出 + 翻面 + 遮挡条揭开），空字段不显示，统一列在「待补充」。
+- 档案卡保留：全屏查看（缩放 / 滑动 / 导出）、收藏、上一张 / 下一张、检索 / 收藏 / 总览直接跳到卡片、键盘操作。
+- `volumes` 改为 1–12 个，可选 `period`、`note`；照片 `volume` 范围随卷数变化。经典三维阵列只在正好 5 卷时提供。
+- three.js 场景、模型查看器改为动态加载（`import()`），首页不再下载 three.js 和 GLB；PWA 预缓存不再包含 GLB。
+- 设置新增「CLASSIC 3D ARRAY」（或 `?classic=1`）切回原来的三维档案阵列。
+- 画质 / 减弱动效联动档案柜效果档位（full / lite），自动画质下慢帧自动切 lite。
+- 新增 `scripts/check-cabinet.mjs`（`npm run check:cabinet`）；`check-landscape`、`check-perf` 改为测试经典模式。
+
 ## 2026-11-13（晚）流畅度
 
 - 手机默认「均衡」画质（AO 16 / 阴影 1024 / 玻璃 75%，其余同原始），电脑仍默认「原始」；用户手动选择后不再自动（`autoQuality`）。

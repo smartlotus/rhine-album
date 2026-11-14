@@ -19,7 +19,7 @@ const b = await chromium.launch({ executablePath: process.env.CHROME || "/usr/bi
 async function open(w, h, url, { reduced = false } = {}) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, reducedMotion: reduced ? "reduce" : "no-preference" });
   // Light render settings keep SwiftShader usable; layout is identical.
-  await ctx.addInitScript(() => localStorage.setItem("rhine-settings", JSON.stringify({ superPerformance: true, sound: false, music: false })));
+  await ctx.addInitScript(() => localStorage.setItem("rhine-settings", JSON.stringify({ superPerformance: true, sound: false, music: false, classic3D: true })));
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${w}x${h}: ${e.message}`));
   const cdp = await ctx.newCDPSession(p);
