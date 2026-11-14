@@ -15,6 +15,7 @@
     "export:archives": "node scripts/export-records.mjs",
     "build": "tsc && vite build && node scripts/build-pwa.mjs",
     "build:cloudflare": "npm run build && node scripts/package-cloudflare.mjs",
+    "build:cloudflare:fallback-fonts": "npm run build && FALLBACK_FONTS=1 node scripts/package-cloudflare.mjs",
     "build:wallpaper": "node scripts/patch-rolling-number.mjs && node scripts/export-records.mjs && tsc && vite build --mode wallpaper --outDir release/wallpaper && node scripts/build-wallpaper.mjs",
     "format": "prettier --write src scripts index.html package.json tsconfig.json",
     "preview": "vite preview --host 127.0.0.1",

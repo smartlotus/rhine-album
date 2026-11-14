@@ -1,3 +1,4 @@
+import { isAndroid, weakAndroid } from "./android";
 /** Rendering controls are independent of lighting, materials and animation. */
 export type RenderQuality = {
   scale: number;
@@ -170,5 +171,8 @@ export function defaultPreset(): QualityPreset {
   const touch = matchMedia("(pointer: coarse)").matches;
   const small = Math.min(screen.width, screen.height) <= 820;
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  // Android: weak phones / WeChat start one step lower; Android at large still gets balanced (DPR ≤ 1.5).
+  if (weakAndroid) return "performance";
+  if (isAndroid) return "balanced";
   return (touch && small) || memory <= 4 ? "balanced" : "original";
 }
