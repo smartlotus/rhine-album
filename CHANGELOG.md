@@ -2,6 +2,16 @@
 
 原项目 RhineLabUI 的更新记录见上游仓库；这里只记相册改造。时间均为北京时间。
 
+## 2026-11-14（晚）安卓流畅与适配
+
+- **经典三维阵列（CLASSIC 3D ARRAY）恢复为默认**，时间档案柜改为可选（设置里关掉 CLASSIC 3D ARRAY，或 `?classic=0`）。用户在设置里切换过一次后按用户的选择（`classic3DChosen`）。
+- 新增 `src/android.ts`：识别安卓 / 鸿蒙、微信 / QQ / X5 等内置浏览器、厂商浏览器。首次访问的默认画质：弱安卓（≤ 4 GB、≤ 4 核或在微信等 App 内）→「性能」，其他安卓 →「均衡」；iOS 和电脑不变。
+- 安卓上动态分辨率最低可降到 50%（其他 67%）；90 / 120 Hz 安卓屏限 60 帧；页面隐藏时不渲染。
+- viewport 加 `interactive-widget=resizes-visual`（键盘弹出不挤压画面）；`100dvh` 前加 `100vh` 回退（旧 X5 内核）。
+- `?from=jelly` 入口保持不变。
+- `scripts/package-cloudflare.mjs`：打包时包含全部构建文件（之前漏掉了按需加载的 GLB 模型）；新增 `FALLBACK_FONTS=1`（`npm run build:cloudflare:fallback-fonts`），没有授权字体时打包与 GitHub Pages 相同的版本。已部署到 Cloudflare Pages：https://rhine-album.pages.dev/ 。
+- `check:cabinet` 增加 4 项默认视图测试（共 78 项）。
+
 ## 2026-11-14 首页改版：时间档案柜 + 干员档案卡
 
 - 新增 `src/cabinet.ts` / `src/cabinet.css`：开场结束后进入二维半（DOM + CSS 3D）的「时间档案柜」，抽屉由 `content/album.json` 的 `volumes` 生成；抽屉拉出后照片按各自比例排成档案纸；单张照片打开为干员档案卡（抽出 + 翻面 + 遮挡条揭开），空字段不显示，统一列在「待补充」。

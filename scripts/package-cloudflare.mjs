@@ -24,8 +24,9 @@ for (const [weight, font] of fallbackFonts ? [] : Object.entries(fonts)) {
 let files = [...new Set([...metadata.files, 'sw.js', 'pwa-build.json', 'update.html', 'update.js',
   ...(fallbackFonts ? [] : ['fonts/novecento/RhineLabNovecento.css'])])].sort()
   .filter(path => !fallbackFonts || existsSync(resolve(source, path)));
-// the PWA list leaves out the on-demand GLB models of the classic 3D array; a hosted site needs every built file
-if (fallbackFonts) for (const path of await readdir(source, { recursive: true }))
+// the PWA list leaves out the on-demand GLB models of the classic 3D array (since 2026-11-14); a hosted site needs
+// every built file
+for (const path of await readdir(source, { recursive: true }))
   if ((await stat(resolve(source, path))).isFile() && !files.includes(path.replaceAll('\\', '/'))) files.push(path.replaceAll('\\', '/'));
 files.sort();
 const entries = [];
