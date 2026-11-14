@@ -10,7 +10,7 @@ const wait=async predicate=>{const start=performance.now();while(!predicate()){i
 try {
  check('白场后第一帧为空，下一帧开始输入 A',state(169).access===''&&state(170).access==='A');
  check('ACCESS 在第 175 帧完成，整句在第 187 帧完成',state(175).access==='ACCESS'&&state(187).access==='ACCESS PERMISSION REQUIRED');
- check('身份确认先停顿，再输入姓名',state(300).auth==='ID CONFIRMED'&&state(339).auth==='ID CONFIRMED : JOYCE MOORE');
+ check('身份确认先停顿，再输入姓名',state(300).auth==='ID CONFIRMED'&&state(339).auth==='ID CONFIRMED : LUSHIVA');
  check('请求接收与开始处理之间确实清空',state(389).auth==='REQUEST RECEIVED'&&state(421).auth===''&&state(440).auth==='START PROCESSING');
  check('圆环收拢中保留第 525、526、528、529 帧跳变',state(525).ringScale>1&&state(526).ringScale>1&&state(527).ringScale===1&&state(528).ringScale>1&&state(530).ringScale===1);
  check('圆环中心切换与欢迎页切换各自落在指定帧',!state(545).ornament&&state(546).ornament&&state(568).scanVisible&&!state(569).scanVisible&&state(569).welcomeVisible);

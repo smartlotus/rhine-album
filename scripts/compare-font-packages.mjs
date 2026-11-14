@@ -10,7 +10,7 @@ const weights = [[300,'Light'],[400,'Regular'],[600,'Demibold'],[700,'Bold']];
 const packages = ['original','dsrkafuu','mobeicanyue'];
 const content = JSON.parse(await readFile('content/archives.json','utf8'));
 const strings = value => typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
-const opening = 'RHINE LAB SYNTHESIZE INFORMATION ANALYSIS OS ACCESS JOYCE MOORE WELCOME TO INTERNAL DATABASE PERMISSION AUTHORIZED 身份信息确认请求已接收开始处理权限验证通过欢迎访问莱茵生命内部资料档案编号保密级别商业区选择档案0123456789：，。·＋－/';
+const opening = 'RHINE LAB SYNTHESIZE INFORMATION ANALYSIS OS ACCESS LUSHIVA WELCOME TO INTERNAL DATABASE PERMISSION AUTHORIZED 身份信息确认请求已接收开始处理权限验证通过欢迎访问莱茵生命内部资料档案编号保密级别商业区选择档案0123456789：，。·＋－/';
 const corpus = [...new Set([...strings(content).join('') + opening])].join('');
 const scenarios = {opening, archives:corpus};
 let css = '';
@@ -41,7 +41,7 @@ for (const name of packages) {
 }
 await mkdir(output,{recursive:true});
 await writeFile(resolve(output,'compare.css'),css);
-const sample = ['RHINE LAB','SYNTHESIZE INFORMATION','ANALYSIS OS / X-001','莱茵生命 · 内部资料档案','身份信息确认：JOYCE MOORE','克丽斯腾／赫默／塞雷娅／缪尔赛思'];
+const sample = ['RHINE LAB','SYNTHESIZE INFORMATION','ANALYSIS OS / X-001','莱茵生命 · 内部资料档案','身份信息确认：LUSHIVA','克丽斯腾／赫默／塞雷娅／缪尔赛思'];
 const html = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/ .tools/font-comparison/compare.css"><style>body{background:#e8e5e1;color:#171713;display:flex;gap:32px;padding:32px;margin:0}section{flex:1;min-width:0}h2{font:16px system-ui}p{margin:18px 0;white-space:nowrap}</style>${packages.map(name=>`<section><h2>${name}</h2>${weights.map(([weight])=>sample.map(text=>`<p style="font: ${weight} 22px ${name}">${text}</p>`).join('')).join('')}</section>`).join('')}`.replace('/ .tools','/.tools');
 const server = createServer(async(req,res)=>{try {
   const pathname = decodeURIComponent(new URL(req.url,'http://localhost').pathname);

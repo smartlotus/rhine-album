@@ -2,6 +2,12 @@
 
 原项目 RhineLabUI 的更新记录见上游仓库；这里只记相册改造。时间均为北京时间。
 
+## 2026-11-15 终端身份改为 LUSHIVA
+
+- 用户可见的操作员 / 登录身份由原项目占位名 `JOYCE MOORE` 改为 `LUSHIVA`（用户写作 Lushiva；终端界面与开场字样保持全大写，与原来的 JOYCE MOORE 一致）。
+- 改动位置：开场「ID CONFIRMED : LUSHIVA」逐字输入与字母图形、页脚、系统设置引言、档案读取日志、MiSans 预加载字符。仓库名、网址、部署路径、localStorage 键和档案编号（如 X-001）未改。
+- 开场字母图形在没有授权 Novecento 字体的机器上，由已有 Normal 字重字母拼出 `LUSHIVA`；其中 `L` 按同字重 I 的竖笔和 E 的横笔厚度重建。若之后用授权字体重新运行 `scripts/make-boot-lettering.py`，会换成官方轮廓。
+
 ## 2026-11-14（晚）安卓流畅与适配
 
 - **经典三维阵列（CLASSIC 3D ARRAY）恢复为默认**，时间档案柜改为可选（设置里关掉 CLASSIC 3D ARRAY，或 `?classic=0`）。用户在设置里切换过一次后按用户的选择（`classic3DChosen`）。

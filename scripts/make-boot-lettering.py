@@ -21,7 +21,7 @@ from PIL import ImageFont
 PHRASES = [
     ('brand', 'RHINE LAB', 'DemiBold'),
     ('access', 'ACCESS PERMISSION REQUIRED', 'Normal'),
-    ('identity', 'ID CONFIRMED : JOYCE MOORE', 'Normal'),
+    ('identity', 'ID CONFIRMED : LUSHIVA', 'Normal'),
     ('request', 'REQUEST RECEIVED', 'Normal'),
     ('processing', 'START PROCESSING...', 'Normal'),
     ('processingGlitch', '              SING...', 'Normal'),
