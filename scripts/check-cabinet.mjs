@@ -23,7 +23,7 @@ const b = await chromium.launch({ executablePath: process.env.CHROME || "/usr/bi
 
 async function open(w, h, mobile, { url = "?from=jelly", reduced = false, settings = {} } = {}) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, reducedMotion: reduced ? "reduce" : "no-preference", serviceWorkers: "block" });
-  await ctx.addInitScript((s) => localStorage.setItem("rhine-settings", s), JSON.stringify({ sound: false, music: false, autoQuality: false, ...settings }));
+  await ctx.addInitScript((s) => localStorage.setItem("rhine-settings", s), JSON.stringify({ sound: false, music: false, autoQuality: false, classic3D: false, classic3DChosen: true, ...settings }));
   const p = await ctx.newPage();
   const requests = [];
   p.on("request", (r) => requests.push(r.url()));
@@ -175,6 +175,18 @@ for (const [w, h, mobile] of VIEWS) {
 }
 // Classic 3D array is still reachable.
 {
+  // 2026-11-14: the classic 3D array is the default home; the cabinet is the option
+  for (const [name, settings, url, want] of [
+    ["first visit (no saved choice) opens the classic 3D array", { classic3D: undefined, classic3DChosen: undefined }, "?from=jelly", "three"],
+    ["a cabinet-era classic3D:false without an explicit choice still opens the classic array", { classic3D: false, classic3DChosen: undefined }, "?from=jelly", "three"],
+    ["switched off in settings → the time archive cabinet", { classic3D: false, classic3DChosen: true }, "?from=jelly", "cabinet"],
+    ["?classic=0 forces the cabinet", { classic3D: undefined, classic3DChosen: undefined }, "?from=jelly&classic=0", "cabinet"],
+  ]) {
+    const o = await open(393, 873, true, { url, settings });
+    const view = await o.p.evaluate(() => document.querySelector("#viewport").dataset.view);
+    log(name, view === want, { view, want });
+    await o.ctx.close();
+  }
   const { ctx, p, requests } = await open(844, 390, true, { url: "?scene=archive&classic=1", settings: { superPerformance: true } });
   const ok = await p.waitForFunction(() => document.querySelector("#three-scene canvas"), null, { timeout: 60000 }).then(() => true, () => false);
   log("?classic=1 loads the original 3D array on demand", ok && requests.some((u) => /\/assets\/scene-/.test(u)) && (await p.evaluate(() => document.querySelector("#viewport").dataset.view)) === "three");

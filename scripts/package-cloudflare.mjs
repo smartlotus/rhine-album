@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile, readdir, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve, sep } from 'node:path';
 
@@ -10,15 +11,24 @@ if (!/^[a-f0-9]{16}$/.test(metadata.version)) throw Error('Invalid PWA release v
 // Pages Git builds need a stable output path; each hosted build starts clean.
 const output = resolve('release/cloudflare', process.env.CF_PAGES === '1' ? 'site' : metadata.version);
 const fonts = JSON.parse(await readFile('verification/boot-lettering/webfont-sources.json', 'utf8'));
-for (const [weight, font] of Object.entries(fonts)) {
+// FALLBACK_FONTS=1 (2026-11-14): package the same build GitHub Pages serves, without the licensed Novecento files
+// (the site then uses its bundled fallback lettering, exactly like the GitHub Pages deploy).
+const fallbackFonts = process.env.FALLBACK_FONTS === '1';
+for (const [weight, font] of fallbackFonts ? [] : Object.entries(fonts)) {
   const path = `fonts/novecento/webFonts/NovecentoSansWide${weight}/font.woff2`;
   if (!metadata.files.includes(path)) throw Error(`Official release requires licensed font: ${weight}`);
   const bytes = await readFile(resolve(source, path));
   if (createHash('sha256').update(bytes).digest('hex') !== font.sha256)
     throw Error(`Licensed font checksum mismatch: ${weight}`);
 }
-const files = [...new Set([...metadata.files, 'sw.js', 'pwa-build.json', 'update.html', 'update.js',
-  'fonts/novecento/RhineLabNovecento.css'])].sort();
+let files = [...new Set([...metadata.files, 'sw.js', 'pwa-build.json', 'update.html', 'update.js',
+  ...(fallbackFonts ? [] : ['fonts/novecento/RhineLabNovecento.css'])])].sort()
+  .filter(path => !fallbackFonts || existsSync(resolve(source, path)));
+// the PWA list leaves out the on-demand GLB models of the classic 3D array (since 2026-11-14); a hosted site needs
+// every built file
+for (const path of await readdir(source, { recursive: true }))
+  if ((await stat(resolve(source, path))).isFile() && !files.includes(path.replaceAll('\\', '/'))) files.push(path.replaceAll('\\', '/'));
+files.sort();
 const entries = [];
 for (const path of files) {
   const from = resolve(source, path);
@@ -42,7 +52,7 @@ for (const { path, bytes } of entries) {
 const immutable = files.filter(path => /^assets\/archive-(cassette|assembly)\.[a-f0-9]{16}\.glb$/.test(path));
 const headers = [
   '/fonts/misans-webfont-4.3.1/*\n  Cache-Control: public, max-age=31536000, immutable',
-  ...immutable.map(path => `/${path}\n  Cache-Control: public, max-age=31536000, immutable`),
+  ...(fallbackFonts ? ['/assets/*\n  Cache-Control: public, max-age=31536000, immutable'] : immutable.map(path => `/${path}\n  Cache-Control: public, max-age=31536000, immutable`)),
   ...['/', '/index.html', '/update*', '/sw.js'].map(path => `${path}\n  Cache-Control: no-cache, no-store, must-revalidate`),
   ...['/manifest.webmanifest', '/pwa-build.json'].map(path => `${path}\n  Cache-Control: no-cache, must-revalidate`),
 ];
@@ -54,4 +64,4 @@ await writeFile('release/cloudflare/latest.json', JSON.stringify({
   bytes: entries.reduce((total, entry) => total + entry.bytes.length, 0),
   largestFileBytes: Math.max(...entries.map(entry => entry.bytes.length)),
 }, null, 2));
-console.log(`Cloudflare package ready: ${output}\n${files.length + 2} files; licensed fonts verified.`);
+console.log(`Cloudflare package ready: ${output}\n${files.length + 2} files; ${fallbackFonts ? 'fallback lettering (no licensed fonts)' : 'licensed fonts verified'}.`);
