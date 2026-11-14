@@ -19,7 +19,8 @@ test("explicit volumes are kept", () => {
   assert.equal(photos[0].volume, 4);
 });
 test("invalid manifests are rejected with a readable reason", () => {
-  assert.throws(() => validateAlbum({ volumes: volumes.slice(0, 4), photos: [] }), /正好有 5 个/);
+  assert.throws(() => validateAlbum({ volumes: [], photos: [] }), /1–12 个/);
+  assert.doesNotThrow(() => validateAlbum({ volumes: volumes.slice(0, 3), photos: [] }));
   assert.throws(() => validateAlbum({ volumes, photos: [{ file: "a.jpg" }, { file: "a.jpg" }] }, gen(["a.jpg"])), /重复/);
   assert.throws(() => validateAlbum({ volumes, photos: [{ file: "a.jpg", volume: 9 }] }, gen(["a.jpg"])), /volume/);
   assert.throws(() => validateAlbum({ volumes, photos: [{ file: "b.jpg" }] }, {}), /npm run photos/);

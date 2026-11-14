@@ -52,15 +52,23 @@ type ManifestPhoto = {
   tags?: string[] | string;
   clearance?: string;
 };
-const VOLUMES = 5;
+// One drawer of the time archive cabinet per volume in content/album.json.
+const VOLUMES = Math.max(1, album.volumes.length);
 const assets = generated as Record<string, PhotoAsset>;
 const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const list = (v: unknown) =>
   Array.isArray(v) ? v.map(text).filter(Boolean) : text(v) ? [text(v)] : [];
-export const volumes = album.volumes.map((v, i) => ({
-  name: text(v.name) || `VOL.${i + 1}`,
-  en: text((v as { en?: string }).en) || `VOLUME ${String(i + 1).padStart(2, "0")}`,
-}));
+export const volumes = (album.volumes.length ? album.volumes : [{ name: "第一卷" }]).map((v, i) => {
+  const extra = v as { en?: string; period?: string; note?: string };
+  return {
+    name: text(v.name) || `VOL.${i + 1}`,
+    en: text(extra.en) || `VOLUME ${String(i + 1).padStart(2, "0")}`,
+    /** Optional: the time span or event this drawer holds, e.g. "2026.05 — 2026.06". */
+    period: text(extra.period),
+    /** Optional: one line shown when the drawer is opened. */
+    note: text(extra.note),
+  };
+});
 const manifestPhotos = (album.photos as ManifestPhoto[]).filter((p) => assets[text(p.file)]);
 // Photos without a volume are spread evenly, in order (12 → 3,3,2,2,2).
 const autoVolume = (i: number, n: number) => {

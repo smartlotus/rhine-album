@@ -40,7 +40,7 @@ function avifPreferred() {
   }
   return avifSupport ?? false;
 }
-function upgradeToFull(holder: HTMLElement, r: ArchiveRecord) {
+export function upgradeToFull(holder: HTMLElement, r: ArchiveRecord) {
   const img = holder.querySelector("img");
   if (!img || !r.photo) return;
   const swap = () => {

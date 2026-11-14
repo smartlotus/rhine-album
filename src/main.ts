@@ -24,8 +24,10 @@ import {
   createRollingNumber,
   createRollingText,
 } from "@kitlangton/rolling-number";
-import { ArchiveScene } from "./scene";
-import { ModelViewer } from "./model-viewer";
+// The classic 3D array (three.js + GLB models) loads only when chosen in settings.
+import type { ArchiveScene } from "./scene";
+import type { ModelViewer } from "./model-viewer";
+import { Cabinet } from "./cabinet";
 import { ContentTransition, SurfaceTransition } from "./ui-transitions";
 import { BootSequence } from "./boot";
 import { loadBootWebfonts } from "./boot-lettering";
@@ -202,6 +204,7 @@ const storedPrefs = readLocal<
     rendering: RenderQuality;
     superPerformance: boolean;
     autoQuality: boolean;
+    classic3D: boolean;
     colorTheme: "light" | "dark";
     motion: StoredMotion;
     motionPreset: MotionPreset;
@@ -231,7 +234,17 @@ const prefs = {
       ? { ...qualityPresets[defaultPreset()] }
       : normalizeQuality(storedPrefs.rendering, storedPrefs.quality !== false),
   colorTheme: storedPrefs.colorTheme === "dark" ? "dark" : "light",
+  /** Off by default: the time archive cabinet is the album's home. */
+  classic3D: storedPrefs.classic3D ?? false,
 };
+// Home view: the 2.5D time archive cabinet, unless the classic 3D array is
+// chosen (settings, or ?classic=1). Wallpaper Engine keeps the 3D original.
+// The classic array has exactly five columns, so it is only offered then.
+const classicAvailable = volumes.length === 5;
+const cabinetMode =
+  !isWallpaper &&
+  (!classicAvailable || (!prefs.classic3D && reviewParams.get("classic") !== "1"));
+$("#viewport").dataset.view = cabinetMode ? "cabinet" : "three";
 const motionActive = (key: MotionKey) => motionEnabled(prefs.motion, key);
 const motionIsReduced = () =>
   Object.values(prefs.motion).every((value) => !value);
@@ -303,6 +316,11 @@ const albumHooks = {
   locate: (index: number) => {
     if (!ready) return;
     sheet.close();
+    if (cabinet) {
+      if (mode === "boot") setMode("archive");
+      cabinet.openCard(index);
+      return;
+    }
     if (mode === "boot") setMode("archive");
     if (selected !== index || mode !== "detail") select(index);
     openFile();
@@ -313,6 +331,25 @@ const sheet = new ContactSheet({
   ...albumHooks,
   view: (index: number) => lightbox.open(index),
 });
+const cabinet = cabinetMode
+  ? new Cabinet($("#viewport"), {
+      sound: (name) => audio.play(name),
+      view: (index) => lightbox.open(index),
+      isSaved: (id) => saved.has(id),
+      toggleSave: (id) => toggleSavedId(id),
+      focus: (index) => {
+        selected = index;
+      },
+      reduced: () =>
+        motionIsReduced() || !motionActive("surfaceTransitions"),
+    })
+  : undefined;
+function cabinetFx() {
+  const q = effectiveRenderQuality();
+  return superPerformanceEnabled() || (q.aoSamples === 0 && q.depthOfField === 0)
+    ? "lite"
+    : "full";
+}
 let musicSuppressed = false;
 function configureAudio() {
   audio.configure({ ...prefs, music: prefs.music && !musicSuppressed });
@@ -401,6 +438,7 @@ function savePrefs() {
         String(button.dataset.colorTheme === prefs.colorTheme),
       ),
     );
+  cabinet?.setFx(cabinetFx(), prefs.autoQuality && !superPerformanceEnabled());
   scene?.setSuperPerformance(superPerformanceEnabled());
   viewer?.setSuperPerformance(superPerformanceEnabled());
   scene?.setQuality(effectiveRenderQuality());
@@ -538,6 +576,12 @@ function showArrival() {
 }
 function setMode(next: Mode) {
   if (workbench?.enabled && next === "detail") next = "archive";
+  if (cabinet && next === "detail") {
+    // The cabinet shows a file as an operator card instead of the 3D dossier.
+    if (mode === "boot") setMode("archive");
+    cabinet.openCard(selected);
+    return;
+  }
   if (next !== "boot") showArrival();
   const previousMode = mode;
   lastDetailVisibility = -1;
@@ -561,6 +605,11 @@ function setMode(next: Mode) {
     configureAudio();
   }
   $("#stage").dataset.mode = next;
+  $("#viewport").dataset.mode = next;
+  if (cabinet) {
+    if (next === "boot") cabinet.hide();
+    else cabinet.show(previousMode === "boot" && started);
+  }
   workbench?.syncVisibility();
   if (previousMode !== next) fit();
   $("#boot").inert = next !== "boot";
@@ -715,10 +764,28 @@ function replayBootAfterModal(forcePreview: boolean) {
 }
 function openFile() {
   if (!ready) return;
+  if (cabinet) {
+    closeModal(() => {
+      if (mode === "boot") setMode("archive");
+      cabinet.openCard(selected);
+    });
+    return;
+  }
   closeModal(() => {
     setMode("detail");
     audio.play("open");
   });
+}
+function toggleSavedId(id: string) {
+  if (saved.has(id)) saved.delete(id);
+  else saved.add(id);
+  try {
+    localStorage.setItem("rhine-saved", JSON.stringify([...saved]));
+  } catch {}
+  $("#saved-count").textContent = String(saved.size).padStart(2, "0");
+  cabinet?.updateSaved();
+  audio.play("confirm");
+  notify(saved.has(id) ? "档案已加入收藏" : "已取消收藏");
 }
 function toggleSaved() {
   const id = records[selected].id;
@@ -728,6 +795,7 @@ function toggleSaved() {
     localStorage.setItem("rhine-saved", JSON.stringify([...saved]));
   } catch {}
   $("#saved-count").textContent = String(saved.size).padStart(2, "0");
+  cabinet?.updateSaved();
   const button = $<HTMLButtonElement>('[data-action="bookmark"]');
   const added = saved.has(id);
   button.firstChild!.textContent = added
@@ -835,6 +903,7 @@ function openModal(kind: NonNullable<typeof modal>) {
       )
       .map((node) => ({ node, inert: node.inert }));
     modalSiblings.forEach(({ node }) => (node.inert = true));
+    cabinet?.setInert(true);
   }
   modalClosing = false;
   modal = kind;
@@ -858,6 +927,7 @@ function closeModal(afterClose?: () => void) {
     modalTransition = undefined;
     modalSiblings.forEach(({ node, inert }) => (node.inert = inert));
     modalSiblings = [];
+    cabinet?.setInert(false);
     $("#archive-ui").inert = mode !== "archive" || Boolean(workbench?.enabled);
     $("#detail-ui").inert = mode !== "detail";
     previousFocus?.focus({ preventScroll: true });
@@ -915,6 +985,10 @@ function renderResults() {
 function updateQualitySummary() {
   const summary = document.querySelector("#quality-summary");
   if (!summary) return;
+  if (cabinet) {
+    summary.textContent = `时间档案柜模式 · 未载入三维模型 · 动效档位：${cabinet.state.fx === "lite" ? "简化（无阴影与光泽）" : "完整"}（性能档或超级性能为简化）`;
+    return;
+  }
   if (!scene) {
     summary.textContent = "3D 已关闭 · 三维模型与渲染资源已释放";
     return;
@@ -931,7 +1005,7 @@ function motionPreferenceNoteMarkup() {
   return `<div id="motion-preference-note" class="motion-preference-note"><p>${motionSummary(prefs.motion)}</p><span>预设：${preset === "full" ? "完整动画" : preset === "reduced" ? "减少动画" : "自定义"} · 选择会保存在本站</span>${allEnabled ? "" : '<button data-action="enable-motion">启用完整动画并重播 ↻</button>'}</div>`;
 }
 function settingsMarkup() {
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p>${isWallpaper ? '<p class="wallpaper-settings-note">每次启动都会读取 Wallpaper Engine 中的设置。在此修改仅对当前运行生效，无法持久保存；如需保留，请在 Wallpaper Engine 的壁纸属性中调整。</p>' : ""}<div class="settings-list">${themeSettingsMarkup(prefs.colorTheme === "dark")}${!isWallpaper ? `<label><div><strong>SUPER PERFORMANCE</strong><span>降低三维画质和渲染分辨率，保留完整动效；关闭后恢复原画质</span></div><input type="checkbox" data-pref="superPerformance" ${prefs.superPerformance ? "checked" : ""}/><i class="toggle"></i></label>` : ""}${workbench?.settingsMarkup() ?? ""}${audioSettingsMarkup(prefs)}</div>${motionPreferenceNoteMarkup()}${motionSettingsMarkup(prefs.motion, prefs.motionPreset)}${qualityMarkup(prefs.rendering)}${pwaSettingsMarkup()}<div class="settings-shortcuts">${isWallpaper ? "<span>DESKTOP CONTROLS</span><p>拖动阵列或点击界面按钮浏览档案。桌面模式下，方向键与滚轮可能无法传入壁纸。</p>" : "<span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p>"}</div><div class="settings-bottom">${!isWallpaper && document.fullscreenEnabled ? '<button data-action="fullscreen">FULLSCREEN <span>↗</span></button>' : ""}<button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${assetUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span></div><div class="modal-bottom credit-line"><span>界面、三维模型、动效与配乐来自 <a href="https://github.com/LBEILC/RhineLabUI" target="_blank" rel="noopener">RhineLabUI ↗</a> © 路北路陈 LBEILC（MIT 许可）· 《明日方舟》及莱茵生命相关设定归鹰角网络所有，本站为非官方同人改作</span><span>POWERED BY RHINE LAB</span></div>`;
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p>${isWallpaper ? '<p class="wallpaper-settings-note">每次启动都会读取 Wallpaper Engine 中的设置。在此修改仅对当前运行生效，无法持久保存；如需保留，请在 Wallpaper Engine 的壁纸属性中调整。</p>' : ""}<div class="settings-list">${themeSettingsMarkup(prefs.colorTheme === "dark")}${!isWallpaper ? `<label><div><strong>SUPER PERFORMANCE</strong><span>降低三维画质和渲染分辨率，保留完整动效；关闭后恢复原画质</span></div><input type="checkbox" data-pref="superPerformance" ${prefs.superPerformance ? "checked" : ""}/><i class="toggle"></i></label>` : ""}${!isWallpaper && classicAvailable ? `<label><div><strong>CLASSIC 3D ARRAY</strong><span>经典三维档案阵列（原项目的玻璃档案盒）；关闭时首页为时间档案柜。切换后重新载入，手机较耗电</span></div><input type="checkbox" data-pref="classic3D" ${prefs.classic3D ? "checked" : ""}/><i class="toggle"></i></label>` : ""}${workbench?.settingsMarkup() ?? ""}${audioSettingsMarkup(prefs)}</div>${motionPreferenceNoteMarkup()}${motionSettingsMarkup(prefs.motion, prefs.motionPreset)}${qualityMarkup(prefs.rendering)}${pwaSettingsMarkup()}<div class="settings-shortcuts">${isWallpaper ? "<span>DESKTOP CONTROLS</span><p>拖动阵列或点击界面按钮浏览档案。桌面模式下，方向键与滚轮可能无法传入壁纸。</p>" : "<span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p>"}</div><div class="settings-bottom">${!isWallpaper && document.fullscreenEnabled ? '<button data-action="fullscreen">FULLSCREEN <span>↗</span></button>' : ""}<button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${assetUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span></div><div class="modal-bottom credit-line"><span>界面、三维模型、动效与配乐来自 <a href="https://github.com/LBEILC/RhineLabUI" target="_blank" rel="noopener">RhineLabUI ↗</a> © 路北路陈 LBEILC（MIT 许可）· 《明日方舟》及莱茵生命相关设定归鹰角网络所有，本站为非官方同人改作</span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
 document.addEventListener("input", (e) => {
@@ -985,6 +1059,16 @@ document.addEventListener("change", (e) => {
       key === "superPerformance"
     )
       prefs[key] = el.checked;
+    if (key === "classic3D") {
+      prefs.classic3D = el.checked;
+      saveAudioPrefs();
+      notify(el.checked ? "正在载入经典三维档案阵列…" : "正在切换到时间档案柜…");
+      const keep = new URLSearchParams();
+      keep.set("scene", "archive");
+      if (arrivalSource()) keep.set("from", arrivalSource());
+      setTimeout(() => location.replace(`${location.pathname}?${keep}`), 600);
+      return;
+    }
     if (key === "sound" || key === "music") saveAudioPrefs();
     else savePrefs();
     audio.play("confirm");
@@ -1104,26 +1188,7 @@ document.addEventListener("click", (e) => {
     // Safari does not always focus a button when it is tapped. Capture the
     // actual opener so closing the modal reliably restores the right control.
     el.focus({ preventScroll: true });
-    viewer ??= new ModelViewer(
-      $("#stage"),
-      () => {
-        audio.setScene(mode);
-        audio.play("page-close");
-      },
-      (sound) => audio.play(sound === "tick" ? "ui-tick" : sound),
-    );
-    audio.setScene("viewer");
-    viewer.setSuperPerformance(superPerformanceEnabled());
-    viewer.setQuality(effectiveRenderQuality());
-    viewer.setMotion(prefs.motion);
-    scene.finishDecryption();
-    viewer.open(
-      records[selected].id,
-      records[selected].title,
-      () => activeScene.createAssemblyModel(),
-      !motionActive("viewerNavigation"),
-    );
-    audio.play("page-open");
+    void openModelViewer(activeScene);
   }
   if (action === "back") {
     setMode("archive");
@@ -1236,6 +1301,8 @@ document.addEventListener("keydown", (e) => {
     if (mode === "boot") setMode("archive");
     openModal("search");
   }
+  // The cabinet handles its own arrows / Enter / Escape.
+  if (cabinet && mode !== "boot") return;
   if (e.key === "Home" && isGamepadEvent(e) && mode === "archive" && !modal) {
     e.preventDefault();
     openModal("saved");
@@ -1272,6 +1339,11 @@ const ease = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 function bootFrame(t: number) {
+  // The cabinet takes over where the original opening would enter the 3D array.
+  if (cabinet && frozenTime === null && t >= 21.9) {
+    setMode("archive");
+    return undefined;
+  }
   if (isWallpaper && !scene && frozenTime === null && t >= 21.9) {
     setMode("archive");
     return undefined;
@@ -1394,6 +1466,12 @@ function frame(ms: number) {
     requestAnimationFrame(frame);
     return;
   }
+  // Cabinet home: no per-frame terminal work, only the theme and the clock.
+  if (cabinet && mode !== "boot") {
+    paintTheme(prefs.colorTheme === "dark" ? 1 : 0);
+    requestAnimationFrame(frame);
+    return;
+  }
   workbench?.tick();
   const time = ms / 1000;
   const theme = scene?.themeAmount ?? (prefs.colorTheme === "dark" ? 1 : 0);
@@ -1510,6 +1588,29 @@ function bindScene(scene: ArchiveScene, cell?: { lane: number; row: number }) {
     hoverTitle.update({ animated });
   };
 }
+async function openModelViewer(activeScene: ArchiveScene) {
+  const { ModelViewer } = await import("./model-viewer");
+  viewer ??= new ModelViewer(
+    $("#stage"),
+    () => {
+      audio.setScene(mode);
+      audio.play("page-close");
+    },
+    (sound) => audio.play(sound === "tick" ? "ui-tick" : sound),
+  );
+  audio.setScene("viewer");
+  viewer.setSuperPerformance(superPerformanceEnabled());
+  viewer.setQuality(effectiveRenderQuality());
+  viewer.setMotion(prefs.motion);
+  activeScene.finishDecryption();
+  viewer.open(
+    records[selected].id,
+    records[selected].title,
+    () => activeScene.createAssemblyModel(),
+    !motionActive("viewerNavigation"),
+  );
+  audio.play("page-open");
+}
 function syncThreeButton() {
   $("#stage").dataset.threeState = threeState;
   syncWallpaperBackground();
@@ -1574,6 +1675,7 @@ async function toggleThree() {
   syncThreeButton();
   let next: ArchiveScene | undefined;
   try {
+    const { ArchiveScene } = await import("./scene");
     next = new ArchiveScene($("#three-scene"));
     next.renderer.domElement.style.opacity = "0";
     next.setPresentationVisible(false, true);
@@ -1616,11 +1718,15 @@ function fallbackTo2D(error: unknown) {
 async function start() {
   try {
     if (isWallpaper) await window.rhineWallpaperPropertiesReady;
-    if (
+    if (cabinetMode) {
+      threeState = "off";
+      $("#stage").dataset.threeState = "off";
+    } else if (
       !isWallpaper ||
       wallpaperHost()?.properties.load3donstartup?.value !== false
     ) {
       try {
+        const { ArchiveScene } = await import("./scene");
         scene = new ArchiveScene($("#three-scene"));
         scene.setTheme(prefs.colorTheme === "dark", true);
         scene.setArchiveCoverage(
@@ -1904,9 +2010,19 @@ Object.assign(window, {
     detail: () => openFile(),
     select: (i: number) => select(i),
     benchRender: (frames = 5) => scene?.benchRender(frames) ?? null,
+    cabinet: cabinet
+      ? {
+          state: () => cabinet.state,
+          openDrawer: (i: number) => cabinet.openDrawer(i),
+          openCard: (i: number) => cabinet.openCard(i),
+          closeCard: () => cabinet.closeCard(),
+          closeDrawer: () => cabinet.closeDrawer(),
+        }
+      : null,
     stats: () => ({
       ...scene?.getStats(),
       threeState,
+      view: cabinet ? "cabinet" : "three",
       fps: Math.round(fps),
       autoQuality: prefs.autoQuality,
       quality: prefs.rendering,

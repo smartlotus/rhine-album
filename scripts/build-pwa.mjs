@@ -10,7 +10,7 @@ const files=all.map(path=>path.replaceAll('\\','/')).filter(path=>
   /^audio\/(atmosphere|motif|pulse)\.ogg$/.test(path)||
   // Album: thumbnails and dossier-size photos work offline; full size loads online.
   /^photos\/[a-f0-9]{12}-(thumb|mid)\.(webp|avif)$/.test(path)
-).filter(path=>!/^assets\/archive-(cassette|assembly)\.glb$/.test(path)).sort();
+).filter(path=>!/^assets\/archive-(cassette|assembly)(\.[a-f0-9]{16})?\.glb$/.test(path)).sort();
 if(!files.some(path=>/^assets\/index-.*\.js$/.test(path)))throw Error('Build the application before generating the offline cache.');
 const worker=await readFile('scripts/pwa-worker.js','utf8');
 const hash=createHash('sha256').update(worker);let bytes=0;
